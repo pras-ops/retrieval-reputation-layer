@@ -1,5 +1,10 @@
 # RRL — A Retrieval Reputation Layer
 
+[![CI Status](https://github.com/pras-ops/retrieval-reputation-layer/actions/workflows/ci.yml/badge.svg)](https://github.com/pras-ops/retrieval-reputation-layer/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/retrieval-reputation-layer.svg)](https://pypi.org/project/retrieval-reputation-layer/)
+[![Python versions](https://img.shields.io/pypi/pyversions/retrieval-reputation-layer.svg)](https://pypi.org/project/retrieval-reputation-layer/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > **RRL** = **R**etrieval **R**eputation **L**ayer. *Not* to be confused with Cache-Augmented
 > Generation ("CAG"); RRL is a ranking-time reputation layer, not a retrieval-free method.
 
@@ -230,6 +235,9 @@ Reported honestly — what the tests/sims actually establish, and what they don'
   benchmark below.
   
   ![Gate D Comparison](sim/gate_d_comparison.png)
+- **Gate E — realistic recurring-query benchmark** (`sim/run_gate_recurring.py`, MBPP): 10 independent seeds, 8 recurring epochs, **real Gemini generation**, **real unit-test verifier**. Under natural recurrence of programming problem families, RRL with global counters beats a strong cross-encoder baseline. Overall pass rate: static baseline **54.0% [40.6%, 67.4%]** vs RRL **56.9% [50.9%, 62.8%]**. Late-stage pass rate: static baseline **54.2% [39.9%, 68.5%]** vs RRL **59.0% [52.5%, 65.4%]**.
+
+  ![Gate E Comparison](sim/gate_recurring_comparison.png)
 
 ### Boundary condition ⛔ — stated, not hidden
 - **Gate C — no recurrence → a strong reranker wins** (`sim/run_gate_c.py`): one-shot HumanEval
@@ -242,9 +250,6 @@ Reported honestly — what the tests/sims actually establish, and what they don'
   ![Gate C Comparison](sim/gate_c_comparison.png)
 
 ### NOT yet validated ⚠️ (the important part)
-- **Realistic recurring-query benchmark — IN PROGRESS.** The recurrence win (Gate D) is on a
-  *synthetic* hint corpus. The honest next step is the same result on a **real** corpus with
-  naturally recurring problem families (`sim/run_gate_recurring.py`, MBPP).
 - **No-verifier case — UNPROVEN.** Every gate above uses a hard verifier. Behavior on purely
   behavioral/judge feedback (no `s_gt`) is bounded by the robustness limits below.
 - **Query-conditional clustering — EXPERIMENTAL.** The "reputation per query-kind" variant
@@ -322,20 +327,16 @@ see [RELATED_WORK.md](RELATED_WORK.md) for the honest gap list.
 
 ## Future work
 
-1. **Realistic recurring-query benchmark** — reproduce the Gate D recurrence win on a *real*
-   corpus with naturally recurring problem families (MBPP), not the synthetic hint corpus.
-   (`sim/run_gate_recurring.py`.)
-2. **Query-conditional reputation (clustering).** Learn "what worked *for this kind of query*"
+1. **Query-conditional reputation (clustering).** Learn "what worked *for this kind of query*"
    rather than globally. Implemented but **not validated** — needs evidence on cluster
    stability, fragmentation, sparse-cluster shrinkage, and clustered-vs-global lift before it
    is a claim rather than a proposal.
-3. **Strong-stack comparison.** *Strong Stack* vs *Strong Stack + RRL* (hybrid retrieval +
+2. **Strong-stack comparison.** *Strong Stack* vs *Strong Stack + RRL* (hybrid retrieval +
    query rewriting + multi-query + agent memory), not just retriever-level. The eventual
    deployment-relevant test.
-4. **No-verifier validation** — behavior under purely behavioral/judge feedback (e.g.
+3. **No-verifier validation** — behavior under purely behavioral/judge feedback (e.g.
    cross-model agreement as a pseudo-verifier).
-5. **Degeneracy monitoring** (retrieval concentration / coverage) before any real deployment.
-6. **Package** as a pip-installable layer over LangChain / LlamaIndex retriever interfaces.
+4. **Degeneracy monitoring** (retrieval concentration / coverage) before any real deployment.
 
 See `ROADMAP.md` for the full plan.
 

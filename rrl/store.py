@@ -13,26 +13,28 @@ class Candidate:
     id: str
     content: str
     metadata: dict = field(default_factory=dict)
-    
+
     # Short-term / Recent Usefulness Counters
     alpha: float = 1.0
     beta: float = 1.0
-    
+
     # Permanent Usefulness Counters
     A: float = 1.0
     B: float = 1.0
-    
+
     # Robustness & Denoising Fields
     fooled: float = 0.0
     verified: float = 0.0
     recent_outcomes: List[float] = field(default_factory=list)
-    
+
     # Query-conditional counters (cluster_id -> dict of counters)
     cluster_counters: Dict[str, dict] = field(default_factory=dict)
-    
+
     # Timestamp tracking for recency-based decay and updates
     last_confirmed: float = 0.0
-    last_updated: float = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).timestamp())
+    last_updated: float = field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).timestamp()
+    )
 
     def __post_init__(self):
         if not self.last_confirmed:
@@ -85,7 +87,9 @@ class Candidate:
             recent_outcomes=data.get("recent_outcomes", []),
             cluster_counters=data.get("cluster_counters", {}),
             last_confirmed=data.get("last_confirmed", 0.0),
-            last_updated=data.get("last_updated", datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            last_updated=data.get(
+                "last_updated", datetime.datetime.now(datetime.timezone.utc).timestamp()
+            ),
         )
 
 
@@ -101,7 +105,6 @@ class CandidateStore:
 
     def list_candidates(self, now: Optional[float] = None) -> List[Candidate]:
         return list(self.candidates.values())
-
 
     def update_candidate(self, candidate: Candidate) -> None:
         if candidate.id in self.candidates:

@@ -1,11 +1,16 @@
 """
 RRL Ingestion Module
-Handles document chunking and vector embedding generation using sentence-transformers.
+Handles document chunking and vector embedding generation.
 """
 
 from typing import List, Dict, Any, Optional
-from sentence_transformers import SentenceTransformer
 from .store import Candidate, CandidateStore
+
+_HAS_SENTENCE_TRANSFORMERS = True
+try:
+    from sentence_transformers import SentenceTransformer  # type: ignore
+except ImportError:
+    _HAS_SENTENCE_TRANSFORMERS = False
 
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str]:
@@ -14,38 +19,40 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str
     """
     if not text:
         return []
-        
+
     chunks = []
     start = 0
     while start < len(text):
         end = start + chunk_size
         chunks.append(text[start:end])
-        # Move start forward by step (chunk_size - overlap)
-        start += (chunk_size - overlap)
-        
-        # Prevent infinite loops if step is 0 or negative
-        if chunk_size <= overlap:
-            break
-            
+        start += chunk_size - overlap
     return chunks
 
 
 class Ingester:
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        # Load the local sentence-transformer model (cached once)
-        self.model = SentenceTransformer(model_name)
+    def __init__(self, model: Optional[Any] = None, model_name: str = "all-MiniLM-L6-v2"):
+        if model is not None:
+            self.model = model
+        else:
+            if not _HAS_SENTENCE_TRANSFORMERS:
+                raise ImportError(
+                    "sentence-transformers is not installed. "
+                    "Install it using `pip install retrieval-reputation-layer[embeddings]` "
+                    "or pass a custom embedder model instance to Ingester."
+                )
+            self.model = SentenceTransformer(model_name)
 
     def ingest_document(
         self,
         store: CandidateStore,
         doc_id: str,
         text: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> List[str]:
         """
         Chunks the document text, encodes each chunk to a vector embedding,
         creates Candidate objects, and registers them in the CandidateStore.
-        
+
         Returns:
             List of generated candidate IDs.
         """
@@ -55,18 +62,21 @@ class Ingester:
         # Bulk encode chunks for performance
         if not chunks:
             return []
-            
+
         embeddings = self.model.encode(chunks)
 
         for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
             candidate_id = f"{doc_id}_chunk_{i}"
-            
+
+            # Convert embedding to list to ensure portability
+            emb_list = emb.tolist() if hasattr(emb, "tolist") else list(emb)
+
             # Pack embedding list and other attributes in metadata
             cand_metadata = {
                 "doc_id": doc_id,
                 "chunk_idx": i,
-                "embedding": emb.tolist(),
-                **(metadata or {})
+                "embedding": emb_list,
+                **(metadata or {}),
             }
 
             candidate = Candidate(
@@ -76,7 +86,7 @@ class Ingester:
                 alpha=1.0,
                 beta=1.0,
                 A=1.0,
-                B=1.0
+                B=1.0,
             )
 
             store.add_candidate(candidate)

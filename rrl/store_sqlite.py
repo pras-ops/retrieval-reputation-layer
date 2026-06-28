@@ -55,7 +55,7 @@ def _decay(value: float, gamma: float, dt_units: float) -> float:
     """Beta-counter decay toward the prior of 1.0:  x <- 1 + (x-1) * gamma^dt."""
     if gamma >= 1.0 or dt_units <= 0:
         return value
-    return 1.0 + (value - 1.0) * (gamma ** dt_units)
+    return 1.0 + (value - 1.0) * (gamma**dt_units)
 
 
 class SqliteCandidateStore(CandidateStore):
@@ -69,13 +69,13 @@ class SqliteCandidateStore(CandidateStore):
         self.db_path = db_path
         self.gamma = gamma
         self.decay_unit_sec = decay_unit_sec
-        
+
         with self._txn() as conn:
             # Check if candidates table exists
             table_exists = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='candidates'"
             ).fetchone()
-            
+
             if not table_exists:
                 # Fresh DB: create tables using modern schema and set user_version=2
                 conn.executescript(SCHEMA_MODERN)
@@ -84,12 +84,18 @@ class SqliteCandidateStore(CandidateStore):
                 # Existing DB: check user_version
                 version_row = conn.execute("PRAGMA user_version").fetchone()
                 user_version = version_row[0] if version_row else 0
-                
+
                 if user_version < 1:
                     # Run schema migrations to match version 1
-                    conn.execute("ALTER TABLE candidates ADD COLUMN fooled REAL NOT NULL DEFAULT 0.0")
-                    conn.execute("ALTER TABLE candidates ADD COLUMN verified REAL NOT NULL DEFAULT 0.0")
-                    conn.execute("ALTER TABLE candidates ADD COLUMN recent_outcomes TEXT NOT NULL DEFAULT '[]'")
+                    conn.execute(
+                        "ALTER TABLE candidates ADD COLUMN fooled REAL NOT NULL DEFAULT 0.0"
+                    )
+                    conn.execute(
+                        "ALTER TABLE candidates ADD COLUMN verified REAL NOT NULL DEFAULT 0.0"
+                    )
+                    conn.execute(
+                        "ALTER TABLE candidates ADD COLUMN recent_outcomes TEXT NOT NULL DEFAULT '[]'"
+                    )
                     conn.execute(
                         "CREATE TABLE IF NOT EXISTS sources ("
                         "source_id TEXT PRIMARY KEY, "
@@ -104,16 +110,22 @@ class SqliteCandidateStore(CandidateStore):
                         "created REAL NOT NULL"
                         ")"
                     )
-                
+
                 # Upgrade to Version 2: Add query clustering & settings
                 if user_version < 2:
-                    conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                    conn.execute(
+                        "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+                    )
                     try:
-                        conn.execute("ALTER TABLE candidates ADD COLUMN cluster_counters TEXT NOT NULL DEFAULT '{}'")
+                        conn.execute(
+                            "ALTER TABLE candidates ADD COLUMN cluster_counters TEXT NOT NULL DEFAULT '{}'"
+                        )
                     except sqlite3.OperationalError:
                         pass
                     try:
-                        conn.execute(f"ALTER TABLE candidates ADD COLUMN last_confirmed REAL NOT NULL DEFAULT {time.time()}")
+                        conn.execute(
+                            f"ALTER TABLE candidates ADD COLUMN last_confirmed REAL NOT NULL DEFAULT {time.time()}"
+                        )
                     except sqlite3.OperationalError:
                         pass
                     try:
@@ -196,9 +208,7 @@ class SqliteCandidateStore(CandidateStore):
 
     def get_candidate(self, candidate_id: str, now: Optional[float] = None) -> Optional[Candidate]:
         with self._txn() as conn:
-            row = conn.execute(
-                "SELECT * FROM candidates WHERE id = ?", (candidate_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
         return self._row_to_candidate(row, now) if row else None
 
     def list_candidates(self, now: Optional[float] = None) -> List[Candidate]:
@@ -241,9 +251,7 @@ class SqliteCandidateStore(CandidateStore):
 
     def get_setting(self, key: str) -> Optional[str]:
         with self._txn() as conn:
-            row = conn.execute(
-                "SELECT value FROM settings WHERE key = ?", (key,)
-            ).fetchone()
+            row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else None
 
     # ---- atomic feedback increment ------------------------------------------
@@ -278,7 +286,7 @@ class SqliteCandidateStore(CandidateStore):
             if row is None:
                 conn.execute("ROLLBACK")
                 raise KeyError(f"Candidate with ID {candidate_id} not found in store.")
-            
+
             last_confirmed = row["last_confirmed"]
             dt = (now - last_confirmed) / self.decay_unit_sec
             alpha = _decay(row["alpha"], self.gamma, dt) + d_alpha
@@ -332,7 +340,19 @@ class SqliteCandidateStore(CandidateStore):
 
             conn.execute(
                 "UPDATE candidates SET alpha=?, beta=?, A=?, B=?, fooled=?, verified=?, recent_outcomes=?, cluster_counters=?, last_confirmed=?, last_updated=? WHERE id=?",
-                (alpha, beta, A, B, fooled, verified, json.dumps(outcomes), json.dumps(cluster_counters), last_confirmed, now, candidate_id),
+                (
+                    alpha,
+                    beta,
+                    A,
+                    B,
+                    fooled,
+                    verified,
+                    json.dumps(outcomes),
+                    json.dumps(cluster_counters),
+                    last_confirmed,
+                    now,
+                    candidate_id,
+                ),
             )
             conn.execute("COMMIT")
         finally:
@@ -340,7 +360,13 @@ class SqliteCandidateStore(CandidateStore):
 
     # ---- pending credit shares (the retrieve <-> feedback bridge) -----------
 
-    def save_pending(self, response_id: str, shares: Dict[str, float], cluster_id: Optional[str] = None, now: Optional[float] = None) -> None:
+    def save_pending(
+        self,
+        response_id: str,
+        shares: Dict[str, float],
+        cluster_id: Optional[str] = None,
+        now: Optional[float] = None,
+    ) -> None:
         if now is None:
             now = time.time()
         with self._txn() as conn:
@@ -371,7 +397,5 @@ class SqliteCandidateStore(CandidateStore):
         if now is None:
             now = time.time()
         with self._txn() as conn:
-            conn.execute(
-                "DELETE FROM pending WHERE created < ?", (now - max_age_sec,)
-            )
+            conn.execute("DELETE FROM pending WHERE created < ?", (now - max_age_sec,))
             return conn.total_changes

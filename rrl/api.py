@@ -16,7 +16,7 @@ from rrl.feedback import OutcomeSignals, update_counters_with_signals
 app = FastAPI(
     title="RRL Feedback & Exploration Loop API",
     description="API for Phase 4 persistent store retrieval and feedback updates",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # Configuration from env variables
@@ -34,7 +34,9 @@ retriever = Retriever(store, weights=(0.20, 0.40, 0.10, 0.30))
 class RetrieveRequest(BaseModel):
     query: str = Field(..., description="Query string for semantic/keyword retrieval")
     top_k: int = Field(5, ge=1, description="Number of top candidates to retrieve")
-    explore: bool = Field(True, description="Whether to apply exploration sampling and rarity bonus")
+    explore: bool = Field(
+        True, description="Whether to apply exploration sampling and rarity bonus"
+    )
 
 
 class CandidateSchema(BaseModel):
@@ -66,10 +68,16 @@ class RetrieveResponse(BaseModel):
 
 class FeedbackRequest(BaseModel):
     response_id: str = Field(..., description="Unique ID returned from the /retrieve call")
-    s_behave: Optional[float] = Field(None, ge=0.0, le=1.0, description="Behavioral keep/edit/regen score")
-    s_gt: Optional[float] = Field(None, ge=0.0, le=1.0, description="Ground truth verification score")
+    s_behave: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="Behavioral keep/edit/regen score"
+    )
+    s_gt: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="Ground truth verification score"
+    )
     s_judge: Optional[float] = Field(None, ge=0.0, le=1.0, description="LLM judge score")
-    s_expl: Optional[float] = Field(None, ge=0.0, le=1.0, description="Explicit thumbs-up/down score")
+    s_expl: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="Explicit thumbs-up/down score"
+    )
 
 
 @app.get("/health")
@@ -81,15 +89,11 @@ def health():
 def retrieve(req: RetrieveRequest):
     try:
         # 1. Retrieve candidates
-        results = retriever.retrieve(
-            vector_scores=req.query,
-            top_k=req.top_k,
-            explore=req.explore
-        )
-        
+        results = retriever.retrieve(vector_scores=req.query, top_k=req.top_k, explore=req.explore)
+
         # 2. Extract retrieved candidate sims
         retrieved_sims = {r[0].id: r[2] for r in results}
-        
+
         # 3. Calculate credit shares r(i) with smoothing
         credit_smoothing = 0.10
         total_smoothed_sim = sum(sim + credit_smoothing for sim in retrieved_sims.values())
@@ -101,13 +105,13 @@ def retrieve(req: RetrieveRequest):
             share = 1.0 / len(retrieved_sims)
             for cid in retrieved_sims:
                 shares[cid] = share
-                
+
         # 4. Save pending shares mapped to generated response_id
         response_id = str(uuid.uuid4())
         if shares:
             cluster_id = getattr(retriever, "last_query_cluster", "cluster_0")
             store.save_pending(response_id, shares, cluster_id)
-            
+
         # 5. Format results response
         items = []
         for cand, score, sim in results:
@@ -126,18 +130,17 @@ def retrieve(req: RetrieveRequest):
                         recent_outcomes=cand.recent_outcomes,
                         cluster_counters=cand.cluster_counters,
                         last_confirmed=cand.last_confirmed,
-                        last_updated=cand.last_updated
+                        last_updated=cand.last_updated,
                     ),
                     score=score,
-                    similarity=sim
+                    similarity=sim,
                 )
             )
-            
+
         return RetrieveResponse(response_id=response_id, results=items)
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Retrieval failed: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Retrieval failed: {str(e)}"
         )
 
 
@@ -148,18 +151,15 @@ def feedback(req: FeedbackRequest):
     if res is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Pending shares for the given response_id not found or already processed."
+            detail="Pending shares for the given response_id not found or already processed.",
         )
     shares, cluster_id = res
-        
+
     # 2. Build signals
     signals = OutcomeSignals(
-        s_behave=req.s_behave,
-        s_gt=req.s_gt,
-        s_judge=req.s_judge,
-        s_expl=req.s_expl
+        s_behave=req.s_behave, s_gt=req.s_gt, s_judge=req.s_judge, s_expl=req.s_expl
     )
-    
+
     # 3. Update candidate counters using the popped shares
     try:
         update_counters_with_signals(
@@ -169,11 +169,11 @@ def feedback(req: FeedbackRequest):
             use_liar_counter=True,
             use_adt_denoising=False,
             robust_estimator_mode="beta",
-            cluster_id=cluster_id
+            cluster_id=cluster_id,
         )
         return {"status": "success", "updated_candidates": list(shares.keys())}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Feedback processing failed: {str(e)}"
+            detail=f"Feedback processing failed: {str(e)}",
         )

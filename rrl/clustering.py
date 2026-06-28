@@ -2,14 +2,17 @@ import json
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 
+
 class QueryClusterer:
-    def __init__(self, centroids: Optional[List[List[float]]] = None, counts: Optional[List[int]] = None):
+    def __init__(
+        self, centroids: Optional[List[List[float]]] = None, counts: Optional[List[int]] = None
+    ):
         self.centroids = [np.array(c, dtype=float) for c in centroids] if centroids else []
         self.counts = list(counts) if counts else [1] * len(self.centroids)
 
     def assign(self, query_emb: List[float], max_clusters: int = 10, tau: float = 0.45) -> str:
         """
-        Assigns the query embedding to the nearest centroid. 
+        Assigns the query embedding to the nearest centroid.
         Updates the centroid running mean if similarity >= tau.
         Spawns a new centroid if similarity < tau and count < max_clusters.
         """
@@ -59,10 +62,7 @@ class QueryClusterer:
 
     def save(self, store) -> None:
         """Saves centroids and counts to store's settings table."""
-        data = {
-            "centroids": [c.tolist() for c in self.centroids],
-            "counts": self.counts
-        }
+        data = {"centroids": [c.tolist() for c in self.centroids], "counts": self.counts}
         if hasattr(store, "save_setting"):
             try:
                 store.save_setting("cluster_centroids", json.dumps(data))
@@ -113,19 +113,19 @@ def cluster_report(history: List[Tuple[str, float]]) -> dict:
         return {
             "avg_queries_per_cluster": 0.0,
             "within_cluster_agreement": 1.0,
-            "cluster_counts": {}
+            "cluster_counts": {},
         }
-    
+
     # Map cluster_id to list of outcomes
     cluster_outcomes: Dict[str, List[float]] = {}
     for cid, outcome in history:
         if cid not in cluster_outcomes:
             cluster_outcomes[cid] = []
         cluster_outcomes[cid].append(outcome)
-        
+
     num_clusters = len(cluster_outcomes)
     avg_queries = len(history) / num_clusters if num_clusters > 0 else 0.0
-    
+
     # Within-cluster outcome agreement
     total_matching = 0
     for cid, outcomes in cluster_outcomes.items():
@@ -133,11 +133,11 @@ def cluster_report(history: List[Tuple[str, float]]) -> dict:
         zeros = len(outcomes) - ones
         majority_count = max(ones, zeros)
         total_matching += majority_count
-        
+
     agreement = total_matching / len(history) if len(history) > 0 else 1.0
-    
+
     return {
         "avg_queries_per_cluster": avg_queries,
         "within_cluster_agreement": agreement,
-        "cluster_counts": {cid: len(outcomes) for cid, outcomes in cluster_outcomes.items()}
+        "cluster_counts": {cid: len(outcomes) for cid, outcomes in cluster_outcomes.items()},
     }

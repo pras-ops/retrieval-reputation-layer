@@ -30,6 +30,9 @@ jobs:
       - name: Run Ruff Lint Check
         run: python -m ruff check .
 
+      - name: Run Ruff Format Check
+        run: python -m ruff format --check .
+
       - name: Run Mypy Type Check
         run: python -m mypy rrl/
 

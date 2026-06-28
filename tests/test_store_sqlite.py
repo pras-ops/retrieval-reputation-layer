@@ -29,7 +29,9 @@ class TestSqliteCandidateStore(unittest.TestCase):
 
     def test_durability_across_reconnect(self):
         s1 = SqliteCandidateStore(self.db_path)
-        s1.add_candidate(Candidate(id="d1", content="hello", alpha=3.0, beta=2.0, last_updated=100.0))
+        s1.add_candidate(
+            Candidate(id="d1", content="hello", alpha=3.0, beta=2.0, last_updated=100.0)
+        )
         del s1
         s2 = SqliteCandidateStore(self.db_path)  # new connection / fresh process simulation
         c = s2.get_candidate("d1")
@@ -40,7 +42,11 @@ class TestSqliteCandidateStore(unittest.TestCase):
     def test_lazy_decay_on_increment(self):
         # gamma 0.5/day: after 1 day, (alpha-1) halves.
         s = SqliteCandidateStore(self.db_path, gamma=0.5, decay_unit_sec=1.0)
-        s.add_candidate(Candidate(id="d1", content="x", alpha=5.0, beta=1.0, last_confirmed=0.0, last_updated=0.0))
+        s.add_candidate(
+            Candidate(
+                id="d1", content="x", alpha=5.0, beta=1.0, last_confirmed=0.0, last_updated=0.0
+            )
+        )
         # Increment 1 unit later with zero delta -> alpha should decay 5 -> 1+(5-1)*0.5 = 3.0
         s.increment("d1", d_alpha=0.0, d_beta=0.0, d_A=0.0, d_B=0.0, now=1.0)
         c = s.get_candidate("d1")
@@ -52,6 +58,7 @@ class TestSqliteCandidateStore(unittest.TestCase):
         s.add_candidate(Candidate(id="d1", content="x", alpha=1.0, beta=1.0, last_updated=0.0))
 
         n_threads, per_thread = 8, 200
+
         def worker():
             for _ in range(per_thread):
                 s.increment("d1", d_alpha=1.0, d_beta=0.0, d_A=0.0, d_B=0.0, now=0.0)
@@ -75,7 +82,7 @@ class TestSqliteCandidateStore(unittest.TestCase):
         self.assertEqual(shares, {"d1": 0.7, "d2": 0.3})
         self.assertIsNone(cluster_id)
         self.assertIsNone(s.pop_pending("resp-1"), "pending not consumed (double-spend!)")
-        
+
         # GC
         s.save_pending("resp-old", {"d1": 1.0}, now=0.0)
         deleted = s.gc_pending(max_age_sec=10.0, now=1000.0)
@@ -96,13 +103,15 @@ class TestSqliteCandidateStore(unittest.TestCase):
             "last_updated REAL"
             ")"
         )
-        conn.execute("INSERT INTO candidates VALUES ('legacy_d', 'legacy content', '{}', 1.0, 1.0, 1.0, 1.0, 100.0)")
+        conn.execute(
+            "INSERT INTO candidates VALUES ('legacy_d', 'legacy content', '{}', 1.0, 1.0, 1.0, 1.0, 100.0)"
+        )
         conn.commit()
         conn.close()
 
         # Instantiate store - triggers upgrade migrations to v1 and v2
         s = SqliteCandidateStore(self.db_path)
-        
+
         # Verify schema version
         conn = s._connect()
         try:
@@ -110,7 +119,7 @@ class TestSqliteCandidateStore(unittest.TestCase):
             self.assertEqual(version, 2)
         finally:
             conn.close()
-            
+
         # Verify legacy candidate loads with appropriate v2 defaults
         c = s.get_candidate("legacy_d")
         self.assertIsNotNone(c)
@@ -124,9 +133,18 @@ class TestSqliteCandidateStore(unittest.TestCase):
         s.add_candidate(Candidate(id="d1", content="x", alpha=1.0, beta=1.0, last_updated=0.0))
 
         n_threads, per_thread = 8, 200
+
         def worker():
             for _ in range(per_thread):
-                s.increment("d1", d_alpha=1.0, d_beta=0.0, d_A=0.0, d_B=0.0, cluster_id="cluster_test", now=0.0)
+                s.increment(
+                    "d1",
+                    d_alpha=1.0,
+                    d_beta=0.0,
+                    d_A=0.0,
+                    d_B=0.0,
+                    cluster_id="cluster_test",
+                    now=0.0,
+                )
 
         threads = [threading.Thread(target=worker) for _ in range(n_threads)]
         for t in threads:
@@ -141,8 +159,12 @@ class TestSqliteCandidateStore(unittest.TestCase):
 
     def test_last_confirmed_set_on_positive(self):
         s = SqliteCandidateStore(self.db_path)
-        s.add_candidate(Candidate(id="d1", content="x", alpha=1.0, beta=1.0, last_confirmed=100.0, last_updated=100.0))
-        
+        s.add_candidate(
+            Candidate(
+                id="d1", content="x", alpha=1.0, beta=1.0, last_confirmed=100.0, last_updated=100.0
+            )
+        )
+
         # Positive outcome updates last_confirmed
         s.increment("d1", d_alpha=0.0, d_beta=0.0, d_A=0.0, d_B=0.0, recent_outcome=1.0, now=200.0)
         c = s.get_candidate("d1")

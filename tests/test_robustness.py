@@ -9,7 +9,7 @@ from rrl.feedback import (
     OutcomeSignals,
     calculate_outcome,
     calculate_robust_estimate,
-    update_counters
+    update_counters,
 )
 
 
@@ -17,7 +17,7 @@ class TestRobustnessUpgrades(unittest.TestCase):
     def setUp(self):
         # Create a temp file for SQLite DB
         self.db_fd, self.db_path = tempfile.mkstemp()
-        
+
     def tearDown(self):
         os.close(self.db_fd)
         os.unlink(self.db_path)
@@ -39,7 +39,7 @@ class TestRobustnessUpgrades(unittest.TestCase):
         # Close connection, recreate legacy DB path
         os.unlink(self.db_path)
         self.db_fd, self.db_path = tempfile.mkstemp()
-        
+
         # Manually create candidates table with old columns only and set user_version to 0
         conn_legacy = sqlite3.connect(self.db_path)
         conn_legacy.execute("""
@@ -72,7 +72,7 @@ class TestRobustnessUpgrades(unittest.TestCase):
         # N=30 ring outcomes sequence
         # We need a dummy candidate to test calculate_robust_estimate
         cand = Candidate(id="c_test", content="content")
-        
+
         # Under 10 fallback test
         cand.recent_outcomes = [0.1] * 5
         cand.alpha = 2.0
@@ -83,7 +83,7 @@ class TestRobustnessUpgrades(unittest.TestCase):
         # Set 10 outcomes
         # Sorted: [0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.3, 0.8, 0.9, 0.9]
         cand.recent_outcomes = [0.1, 0.2, 0.9, 0.1, 0.2, 0.8, 0.3, 0.9, 0.1, 0.2]
-        
+
         # Plain Median test (n=10, even, average of index 4 and 5: 0.2 and 0.2 -> 0.20)
         self.assertAlmostEqual(calculate_robust_estimate(cand, "median"), 0.20)
 
@@ -104,14 +104,18 @@ class TestRobustnessUpgrades(unittest.TestCase):
         # 1. No fooled count -> trust_score = 1.0
         signals = OutcomeSignals(s_behave=0.90, s_gt=None, s_judge=0.50, s_expl=1.0)
         # outcome = (0.45 * 0.90 + 0.15 * 0.50 + 0.10 * 1.0) / 0.70 = 0.58 / 0.70 = 0.82857
-        outcome_normal = calculate_outcome(signals, cap_behave=False, gt_override=False, trust_score=1.0)
+        outcome_normal = calculate_outcome(
+            signals, cap_behave=False, gt_override=False, trust_score=1.0
+        )
         self.assertAlmostEqual(outcome_normal, 0.58 / 0.70)
 
         # 2. 50% fooled -> trust_score = 0.50
         # behave scaled: 0.90 * 0.50 = 0.45
         # expl scaled: 1.0 * 0.50 = 0.50
         # outcome = (0.45 * 0.45 + 0.15 * 0.50 + 0.10 * 0.50) / 0.70 = 0.3275 / 0.70 = 0.467857
-        outcome_scaled = calculate_outcome(signals, cap_behave=False, gt_override=False, trust_score=0.50)
+        outcome_scaled = calculate_outcome(
+            signals, cap_behave=False, gt_override=False, trust_score=0.50
+        )
         self.assertAlmostEqual(outcome_scaled, 0.3275 / 0.70)
 
     def test_adt_loss_downweighting(self):
@@ -131,7 +135,7 @@ class TestRobustnessUpgrades(unittest.TestCase):
             current_timestamp=100.0,
             credit_smoothing=0.0,
             use_adt_denoising=True,
-            robust_estimator_mode="median"
+            robust_estimator_mode="median",
         )
         cand_updated = store.get_candidate("c1")
         # Since y = 0.4 -> kappa = 2 * |0.4 - 0.5| = 0.2 -> kappa_eff = 0.2
@@ -152,17 +156,27 @@ class TestRobustnessUpgrades(unittest.TestCase):
             current_timestamp=100.0,
             credit_smoothing=0.0,
             use_adt_denoising=True,
-            robust_estimator_mode="median"
+            robust_estimator_mode="median",
         )
         cand_anomaly = store.get_candidate("c1")
         self.assertAlmostEqual(cand_anomaly.alpha, 1.08 + 0.8 * math_exp_calc(0.5) * 0.9)
 
     def test_update_counters_with_signals(self):
         from rrl.feedback import update_counters_with_signals
+
         store = SqliteCandidateStore(self.db_path)
-        cand = Candidate(id="c1", content="c1_content", alpha=1.0, beta=1.0, A=1.0, B=1.0, fooled=1.0, verified=2.0)
+        cand = Candidate(
+            id="c1",
+            content="c1_content",
+            alpha=1.0,
+            beta=1.0,
+            A=1.0,
+            B=1.0,
+            fooled=1.0,
+            verified=2.0,
+        )
         store.add_candidate(cand)
-        
+
         # fooled/verified = 1/2 = 0.5 -> trust_score = 0.5
         # OutcomeSignals: behave=0.90, gt=None, judge=0.50, expl=1.0
         # behave scaled: 0.90 * 0.5 = 0.45
@@ -171,7 +185,7 @@ class TestRobustnessUpgrades(unittest.TestCase):
         # y = 0.467857 -> kappa = 2 * |y - 0.5| = 2 * (0.5 - 0.467857) = 0.064286
         signals = OutcomeSignals(s_behave=0.90, s_gt=None, s_judge=0.50, s_expl=1.0)
         shares = {"c1": 0.8}
-        
+
         # update
         update_counters_with_signals(
             store=store,
@@ -180,12 +194,12 @@ class TestRobustnessUpgrades(unittest.TestCase):
             current_timestamp=100.0,
             use_liar_counter=True,
         )
-        
+
         cand_updated = store.get_candidate("c1")
         # since s_gt is None, fooled and verified are NOT updated
         self.assertEqual(cand_updated.fooled, 1.0)
         self.assertEqual(cand_updated.verified, 2.0)
-        
+
         # check updates: d_alpha = kappa * share * y = 0.064286 * 0.8 * 0.467857 = 0.02406
         y = 0.3275 / 0.70
         kappa = 2.0 * (0.5 - y)
@@ -195,7 +209,8 @@ class TestRobustnessUpgrades(unittest.TestCase):
 
 def math_exp_calc(loss: float) -> float:
     import math
-    return math.exp(-(loss ** 2) / 0.32)
+
+    return math.exp(-(loss**2) / 0.32)
 
 
 if __name__ == "__main__":
