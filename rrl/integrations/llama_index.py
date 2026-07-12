@@ -1,8 +1,15 @@
 from typing import Any, List
-from llama_index.core.retrievers import BaseRetriever
-from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
 
 from rrl.feedback import OutcomeSignals
+
+try:
+    from llama_index.core.retrievers import BaseRetriever
+    from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
+except ImportError as e:
+    raise ImportError(
+        "llama-index-core is not installed. Install it using "
+        "`pip install retrieval-reputation-layer[llamaindex]`."
+    ) from e
 
 
 class RRLLlamaIndexRetriever(BaseRetriever):

@@ -46,6 +46,14 @@ api = [
 llm = [
     "google-genai>=1.0",
 ]
+# LangChain retriever adapter (rrl.integrations.langchain)
+langchain = [
+    "langchain-core>=0.3",
+]
+# LlamaIndex retriever adapter (rrl.integrations.llama_index)
+llamaindex = [
+    "llama-index-core>=0.11",
+]
 # Simulations, plots, and the test suite
 dev = [
     "matplotlib>=3.7",

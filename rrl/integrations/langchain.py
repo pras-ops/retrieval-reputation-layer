@@ -1,9 +1,16 @@
 from typing import Any, List
-from langchain_core.callbacks import CallbackManagerForRetrieverRun
-from langchain_core.documents import Document
-from langchain_core.retrievers import BaseRetriever
 
 from rrl.feedback import OutcomeSignals
+
+try:
+    from langchain_core.callbacks import CallbackManagerForRetrieverRun
+    from langchain_core.documents import Document
+    from langchain_core.retrievers import BaseRetriever
+except ImportError as e:
+    raise ImportError(
+        "langchain-core is not installed. Install it using "
+        "`pip install retrieval-reputation-layer[langchain]`."
+    ) from e
 
 
 class RRLRetriever(BaseRetriever):

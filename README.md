@@ -88,6 +88,7 @@ converge).
 | `rrl/judge.py` | LLM faithfulness judge (Gemini) with a token-overlap fallback when offline |
 | `rrl/ingest.py` | Document chunking + embedding into candidates |
 | `rrl/api.py` | FastAPI service: `POST /retrieve`, `POST /feedback`, `GET /health` |
+| `rrl/integrations/` | Optional adapters: `langchain.py` (`RRLRetriever`), `llama_index.py` (`RRLLlamaIndexRetriever`) |
 
 ---
 
@@ -148,6 +149,36 @@ curl -X POST localhost:8000/feedback -H 'content-type: application/json' \
 `/retrieve` persists the frozen credit shares to the `pending` table; `/feedback` pops them
 and applies the update through the store's **atomic** `increment()` — safe under concurrent
 requests.
+
+---
+
+## Quickstart (LangChain / LlamaIndex)
+
+Adapters wrap the bundled `Retriever` for use inside existing chains/pipelines.
+
+```bash
+pip install "retrieval-reputation-layer[embeddings,langchain]"    # or [embeddings,llamaindex]
+```
+
+```python
+from rrl.integrations.langchain import RRLRetriever
+from rrl.feedback import OutcomeSignals
+
+lc_retriever = RRLRetriever(rrl_retriever=retriever)   # retriever = rrl.Retriever(store)
+docs = lc_retriever.invoke("how do I avoid db anomalies?")
+
+# After observing the outcome downstream:
+lc_retriever.record_feedback(docs, OutcomeSignals(s_behave=0.9, s_gt=1.0))
+```
+
+`rrl.integrations.llama_index.RRLLlamaIndexRetriever` follows the same shape for LlamaIndex's
+`BaseRetriever` / `NodeWithScore`.
+
+> **Scope note:** these adapters currently feed back through `update_counters()` with one
+> shared outcome per retrieval batch — the simpler, batch-level path, not the per-response
+> `response_id` credit-share bridge used by `ReputationLayer`/the FastAPI service. Prefer
+> `ReputationLayer.rescore()` directly (see the library quickstart above) if you need
+> per-document credit attribution inside a custom pipeline.
 
 ---
 
