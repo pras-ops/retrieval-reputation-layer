@@ -71,7 +71,8 @@ Homepage = "https://github.com/pras-ops/retrieval-reputation-layer"
 Repository = "https://github.com/pras-ops/retrieval-reputation-layer"
 
 [tool.setuptools]
-packages = ["rrl", "rrl.integrations"]
+packages = ["rrl"]
+
 
 [tool.ruff]
 line-length = 100
