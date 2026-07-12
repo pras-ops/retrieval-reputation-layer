@@ -11,7 +11,7 @@ import time
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple
 
-from .store import Candidate, CandidateStore
+from .store import Candidate, CandidateStore, _decay
 
 
 SCHEMA_MODERN = """
@@ -50,12 +50,6 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
-
-def _decay(value: float, gamma: float, dt_units: float) -> float:
-    """Beta-counter decay toward the prior of 1.0:  x <- 1 + (x-1) * gamma^dt."""
-    if gamma >= 1.0 or dt_units <= 0:
-        return value
-    return 1.0 + (value - 1.0) * (gamma**dt_units)
 
 
 class SqliteCandidateStore(CandidateStore):

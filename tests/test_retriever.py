@@ -28,7 +28,12 @@ class TestRetrieverLogic(unittest.TestCase):
         store.add_candidate(cand)
 
         # Instantiate Retriever with weights highlighting permanent & short usefulness
-        retriever = Retriever(store, weights=(0.0, 0.5, 0.5, 0.0), model=MockSentenceTransformer())
+        retriever = Retriever(
+            store,
+            weights=(0.0, 0.5, 0.5, 0.0),
+            model=MockSentenceTransformer(),
+            use_clustering=True,
+        )
 
         # Trigger retrieve (which assigns to cluster_0)
         # cluster_0 has 0 observations. Thus lam = 0.0, alpha_eff should equal alpha_global = 5.0
@@ -58,7 +63,12 @@ class TestRetrieverLogic(unittest.TestCase):
         }
         store.add_candidate(cand)
 
-        retriever = Retriever(store, weights=(0.0, 0.5, 0.5, 0.0), model=MockSentenceTransformer())
+        retriever = Retriever(
+            store,
+            weights=(0.0, 0.5, 0.5, 0.0),
+            model=MockSentenceTransformer(),
+            use_clustering=True,
+        )
 
         # Retrieve: lam = 1.0 => alpha_eff = 10.0, beta_eff = 10.0, A_eff = 10.0, B_eff = 10.0
         # C_robust = 10 / 20 = 0.5

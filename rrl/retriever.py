@@ -14,11 +14,7 @@ from typing import Dict, List, Tuple, Optional, Union, Any
 from .store import Candidate, CandidateStore
 from .clustering import QueryClusterer
 
-_HAS_SENTENCE_TRANSFORMERS = True
-try:
-    from sentence_transformers import SentenceTransformer  # type: ignore
-except ImportError:
-    _HAS_SENTENCE_TRANSFORMERS = False
+# Lazy import sentence-transformers only inside the model property to avoid heavy startup dependency.
 
 
 def tokenize(text: str) -> List[str]:
@@ -79,7 +75,7 @@ class Retriever:
         robust_estimator_mode: str = "beta",
         use_optimistic_prior: bool = True,
         clusterer: Optional[QueryClusterer] = None,
-        use_clustering: bool = True,
+        use_clustering: bool = False,
     ):
         self.store = store
         self.k_rrf = k_rrf
@@ -101,10 +97,25 @@ class Retriever:
         self._bm25_cached: Optional[BM25] = None
         self._bm25_candidate_ids: List[str] = []
 
+        # Instantiate the reputation layer
+        from .layer import ReputationLayer
+        self.layer = ReputationLayer(
+            store=self.store,
+            weights=self.weights,
+            robust_estimator_mode=self.robust_estimator_mode,
+            use_optimistic_prior=self.use_optimistic_prior,
+            gamma=1.0,
+            decay_unit_sec=86400.0,
+            use_clustering=self.use_clustering,
+        )
+        self.last_response_id: str = ""
+
     @property
     def model(self) -> Any:
         if self._model is None:
-            if not _HAS_SENTENCE_TRANSFORMERS:
+            try:
+                from sentence_transformers import SentenceTransformer  # type: ignore
+            except ImportError:
                 raise ImportError(
                     "sentence-transformers is not installed. "
                     "Install it using `pip install retrieval-reputation-layer[embeddings]` "
@@ -243,129 +254,26 @@ class Retriever:
         # 5. Normalize RRF scores to obtain sim(i) in [0, 1]
         sim_scores = self._normalize_scores(rrf_scores)
 
-        ranked_candidates = []
-        for cid, sim in sim_scores.items():
-            candidate = self.store.get_candidate(cid)
-            if not candidate:
-                continue
+        # Delegate ranking, scoring and epsilon-greedy exploration to ReputationLayer
+        rescore_result = self.layer.rescore(
+            sims=sim_scores,
+            top_k=top_k,
+            explore=explore,
+            now=current_timestamp,
+            cluster_id=cluster_id,
+            override_weights=override_weights,
+            epsilon=epsilon,
+            robust_estimator_mode=robust_estimator_mode,
+            gamma=gamma,
+            decay_unit_sec=decay_unit_sec,
+        )
+        self.last_response_id = rescore_result.response_id
 
-            # Decay on read if not handled by SQL store
-            alpha_global = candidate.alpha
-            beta_global = candidate.beta
-            A_global = candidate.A
-            B_global = candidate.B
-
-            if not hasattr(self.store, "increment"):
-                # Recency-based decay for in-memory store: uses last_confirmed
-                last_confirmed = candidate.last_confirmed
-                dt = current_timestamp - last_confirmed if current_timestamp is not None else 0.0
-                if dt > 0 and decay_unit_sec > 0:
-                    assert current_timestamp is not None
-                    days = dt / decay_unit_sec
-                    decay_factor = gamma**days
-                    candidate.alpha = 1.0 + (candidate.alpha - 1.0) * decay_factor
-                    candidate.beta = 1.0 + (candidate.beta - 1.0) * decay_factor
-                    candidate.last_updated = current_timestamp
-                alpha_global = candidate.alpha
-                beta_global = candidate.beta
-
-            # Apply optimistic prior for cold-start / new docs
-            if self.use_optimistic_prior and (
-                A_global + B_global <= 2.0 or (alpha_global == 1.0 and beta_global == 1.0)
-            ):
-                alpha_global = 2.0
-
-            # Hierarchical query-conditional cluster counters
-            alpha_c = 1.0
-            beta_c = 1.0
-            A_c = 1.0
-            B_c = 1.0
-            n_cluster = 0.0
-
-            cluster_counters = getattr(candidate, "cluster_counters", {})
-            if cluster_id and cluster_id in cluster_counters:
-                cc = cluster_counters[cluster_id]
-                cc_lc = cc.get("last_confirmed", candidate.last_confirmed)
-
-                # Decay cluster counters on read
-                from .store_sqlite import _decay
-
-                cc_dt = 0.0
-                if current_timestamp is not None:
-                    cc_dt = (current_timestamp - cc_lc) / decay_unit_sec
-
-                alpha_c = _decay(cc.get("alpha", 1.0), gamma, cc_dt)
-                beta_c = _decay(cc.get("beta", 1.0), gamma, cc_dt)
-                A_c = cc.get("A", 1.0)
-                B_c = cc.get("B", 1.0)
-                n_cluster = max(0.0, A_c + B_c - 2.0)
-
-            # Shrinkage interpolation (K_threshold = 10.0)
-            N_threshold = 10.0
-            lam = min(1.0, max(0.0, n_cluster / N_threshold))
-
-            alpha = (1.0 - lam) * alpha_global + lam * alpha_c
-            beta = (1.0 - lam) * beta_global + lam * beta_c
-            A = (1.0 - lam) * A_global + lam * A_c
-            B = (1.0 - lam) * B_global + lam * B_c
-
-            # Robust estimation for exploitation C_robust
-            from .feedback import calculate_robust_estimate
-
-            robust_mode = (
-                robust_estimator_mode
-                if robust_estimator_mode is not None
-                else self.robust_estimator_mode
-            )
-            C_robust = calculate_robust_estimate(candidate, robust_mode)
-            if robust_mode == "beta":
-                C_robust = alpha / (alpha + beta)
-
-            # P(i) = A(i) / (A(i) + B(i))
-            P_i = A / (A + B) if (A + B) > 0 else 0.5
-
-            # Rarity/uncertainty UCB bonus with exploration floor (min 0.05)
-            rarity_bonus = max(0.05, 1.0 / ((alpha + beta) ** 0.5))
-
-            # Calculate total score using configured weights
-            score = w_sim * sim + w_c * C_robust + w_p * P_i
-            if explore:
-                alpha_val = max(1e-5, alpha)
-                beta_val = max(1e-5, beta)
-                ts_sample = random.betavariate(alpha_val, beta_val)
-                # Scale exploration by similarity score to prevent exploring completely irrelevant candidates
-                score += w_explore * sim * (ts_sample + rarity_bonus)
-
-            ranked_candidates.append((candidate, score, sim))
-
-        # Sort by total score descending
-        ranked_candidates.sort(key=lambda x: x[1], reverse=True)
-
-        results = ranked_candidates[:top_k]
-
-        # Epsilon-greedy exploration over the full candidate set
-        if explore and random.random() < epsilon and len(sim_scores) > top_k:
-            all_cids = list(sim_scores.keys())
-            selected_cids = [r[0].id for r in results[: top_k - 1]]
-            raw_pool = [
-                self.store.get_candidate(cid) for cid in all_cids if cid not in selected_cids
-            ]
-            candidate_pool: List[Candidate] = [c for c in raw_pool if c is not None]
-
-            if candidate_pool:
-                min_count = min(c.alpha + c.beta for c in candidate_pool)
-                least_explored = [
-                    c for c in candidate_pool if (c.alpha + c.beta) <= min_count + 1e-5
-                ]
-                explorer_cand = random.choice(least_explored)
-
-                explorer_tuple = None
-                for r_tuple in ranked_candidates:
-                    if r_tuple[0].id == explorer_cand.id:
-                        explorer_tuple = r_tuple
-                        break
-
-                if explorer_tuple:
-                    results = results[: top_k - 1] + [explorer_tuple]
+        # Resolve IDs back to Candidate tuples for backward compatibility
+        results = []
+        for cid, score, sim in rescore_result.results:
+            cand = self.store.get_candidate(cid)
+            if cand:
+                results.append((cand, score, sim))
 
         return results

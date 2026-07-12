@@ -6,7 +6,7 @@ confidence-weighted update step (κ) with exponential decay (γ).
 
 from dataclasses import dataclass
 from typing import Dict, Optional
-from .store import CandidateStore
+from .store import CandidateStore, _decay
 
 
 @dataclass
@@ -260,9 +260,8 @@ def update_counters_from_shares(
             dt = current_timestamp - last_confirmed
             if dt > 0 and decay_unit_sec > 0:
                 days = dt / decay_unit_sec
-                decay_factor = gamma**days
-                candidate.alpha = 1.0 + (candidate.alpha - 1.0) * decay_factor
-                candidate.beta = 1.0 + (candidate.beta - 1.0) * decay_factor
+                candidate.alpha = _decay(candidate.alpha, gamma, days)
+                candidate.beta = _decay(candidate.beta, gamma, days)
 
             # Apply updates
             candidate.alpha += d_alpha
@@ -295,9 +294,8 @@ def update_counters_from_shares(
                 cc_dt = current_timestamp - cc_lc
                 if cc_dt > 0 and decay_unit_sec > 0:
                     cc_days = cc_dt / decay_unit_sec
-                    cc_decay_factor = gamma**cc_days
-                    cc["alpha"] = 1.0 + (cc.get("alpha", 1.0) - 1.0) * cc_decay_factor
-                    cc["beta"] = 1.0 + (cc.get("beta", 1.0) - 1.0) * cc_decay_factor
+                    cc["alpha"] = _decay(cc.get("alpha", 1.0), gamma, cc_days)
+                    cc["beta"] = _decay(cc.get("beta", 1.0), gamma, cc_days)
 
                 cc["alpha"] = cc.get("alpha", 1.0) + d_alpha
                 cc["beta"] = cc.get("beta", 1.0) + d_beta
@@ -412,9 +410,8 @@ def update_counters_with_signals(
             dt = current_timestamp - last_confirmed
             if dt > 0 and decay_unit_sec > 0:
                 days = dt / decay_unit_sec
-                decay_factor = gamma**days
-                candidate.alpha = 1.0 + (candidate.alpha - 1.0) * decay_factor
-                candidate.beta = 1.0 + (candidate.beta - 1.0) * decay_factor
+                candidate.alpha = _decay(candidate.alpha, gamma, days)
+                candidate.beta = _decay(candidate.beta, gamma, days)
 
             candidate.alpha += d_alpha
             candidate.beta += d_beta
@@ -446,9 +443,8 @@ def update_counters_with_signals(
                 cc_dt = current_timestamp - cc_lc
                 if cc_dt > 0 and decay_unit_sec > 0:
                     cc_days = cc_dt / decay_unit_sec
-                    cc_decay_factor = gamma**cc_days
-                    cc["alpha"] = 1.0 + (cc.get("alpha", 1.0) - 1.0) * cc_decay_factor
-                    cc["beta"] = 1.0 + (cc.get("beta", 1.0) - 1.0) * cc_decay_factor
+                    cc["alpha"] = _decay(cc.get("alpha", 1.0), gamma, cc_days)
+                    cc["beta"] = _decay(cc.get("beta", 1.0), gamma, cc_days)
 
                 cc["alpha"] = cc.get("alpha", 1.0) + d_alpha
                 cc["beta"] = cc.get("beta", 1.0) + d_beta
@@ -469,3 +465,22 @@ def update_counters_with_signals(
                 candidate.last_confirmed = current_timestamp
             candidate.last_updated = current_timestamp
             store.update_candidate(candidate)
+
+
+def compute_credit_shares(sims: Dict[str, float], smoothing: float = 0.10) -> Dict[str, float]:
+    """
+    Computes credit shares r(i) from a dictionary of similarity scores with smoothing.
+    """
+    if not sims:
+        return {}
+    total_smoothed_sim = sum(sim + smoothing for sim in sims.values())
+    shares = {}
+    if total_smoothed_sim > 0.0:
+        for cid, sim in sims.items():
+            shares[cid] = (sim + smoothing) / total_smoothed_sim
+    else:
+        share = 1.0 / len(sims)
+        for cid in sims:
+            shares[cid] = share
+    return shares
+

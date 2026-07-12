@@ -5,6 +5,7 @@ RAG Feedback and Exploration Loop implementation.
 
 from .store import Candidate, CandidateStore
 from .retriever import Retriever
+from .layer import ReputationLayer, RescoreResult
 from .feedback import (
     OutcomeSignals,
     calculate_outcome,
@@ -17,9 +18,12 @@ __all__ = [
     "Candidate",
     "CandidateStore",
     "Retriever",
+    "ReputationLayer",
+    "RescoreResult",
     "OutcomeSignals",
     "calculate_outcome",
     "update_counters",
     "update_counters_from_shares",
     "update_counters_with_signals",
 ]
+

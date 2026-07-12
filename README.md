@@ -92,45 +92,38 @@ converge).
 Requires Python 3.10+. Install the package with the extras you need:
 
 ```bash
-pip install -e .                 # core retrieval (sentence-transformers, numpy, scipy, scikit-learn)
+pip install -e .                 # core reputation layer (only requires numpy)
+pip install -e ".[embeddings]"   # + built-in retriever support (sentence-transformers)
 pip install -e ".[api]"          # + FastAPI service
 pip install -e ".[llm]"          # + live LLM judge (else heuristic fallback)
-pip install -e ".[dev]"          # + simulations/plots and the test suite
+pip install -e ".[dev]"          # + simulations, plots, and testing (includes scipy, scikit-learn)
 pip install -e ".[api,llm,dev]"  # everything
 ```
 
 To reproduce the benchmark gates against the exact validated dependency versions, use the
 pinned set instead: `pip install -r requirements.txt`.
 
-> The first retrieval downloads the `all-MiniLM-L6-v2` model (~80 MB). The LLM judge needs
-> `GEMINI_API_KEY` or Vertex AI credentials; without them it falls back to a local heuristic.
+> [!NOTE]
+> The first retrieval using the built-in retriever downloads the `all-MiniLM-L6-v2` model (~80 MB).
+> The LLM judge needs `GEMINI_API_KEY` or Vertex AI credentials; without them it falls back to a local heuristic.
 
 ---
 
 ## Quickstart (library)
 
 ```python
-from rrl.store import CandidateStore
-from rrl.ingest import Ingester
-from rrl.retriever import Retriever
-from rrl.feedback import OutcomeSignals, update_counters
+from rrl import CandidateStore, ReputationLayer
 
 store = CandidateStore()
-ingester = Ingester()
-ingester.ingest_document(store, "doc1", "Long document text ...")
+layer = ReputationLayer(store)
 
-# weights = (w_sim, w_c, w_p, w_explore)
-retriever = Retriever(store, weights=(0.20, 0.40, 0.10, 0.30))
+# 1. Provide candidate relevance scores from ANY retriever:
+res = layer.rescore({"doc1": 0.9, "doc2": 0.4}, top_k=2)
 
-results = retriever.retrieve("my question", top_k=3, explore=True)
-retrieved_sims = {cand.id: sim for cand, score, sim in results}
-
-# After observing how the answer landed, feed an outcome back:
-signals = OutcomeSignals(s_behave=0.9, s_gt=1.0, s_judge=0.8, s_expl=1.0)
-from rrl.feedback import calculate_outcome
-y = calculate_outcome(signals)                 # y in [0,1]
-update_counters(store, retrieved_sims, y, signals=signals)
+# 2. Record downstream feedback (behavior, ground-truth tests, judge, etc.)
+layer.record_feedback(res.response_id, s_behave=0.75, s_gt=1.0)
 ```
+
 
 ## Quickstart (API)
 

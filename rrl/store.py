@@ -2,10 +2,18 @@
 RRL Candidate and Store Implementations
 Defines the Candidate dataclass with its Beta distribution counters and the CandidateStore.
 """
-
 from dataclasses import dataclass, field
 import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
+import time
+
+
+def _decay(value: float, gamma: float, dt_units: float) -> float:
+    """Beta-counter decay toward the prior of 1.0:  x <- 1 + (x-1) * gamma^dt."""
+    if gamma >= 1.0 or dt_units <= 0:
+        return value
+    return 1.0 + (value - 1.0) * (gamma**dt_units)
+
 
 
 @dataclass
@@ -96,6 +104,7 @@ class Candidate:
 class CandidateStore:
     def __init__(self):
         self.candidates: Dict[str, Candidate] = {}
+        self.pending: Dict[str, Tuple[Dict[str, float], Optional[str], float]] = {}
 
     def add_candidate(self, candidate: Candidate) -> None:
         self.candidates[candidate.id] = candidate
@@ -111,3 +120,29 @@ class CandidateStore:
             self.candidates[candidate.id] = candidate
         else:
             raise KeyError(f"Candidate with ID {candidate.id} not found in store.")
+
+    def save_pending(
+        self,
+        response_id: str,
+        shares: Dict[str, float],
+        cluster_id: Optional[str] = None,
+        now: Optional[float] = None,
+    ) -> None:
+        if now is None:
+            now = time.time()
+        self.pending[response_id] = (shares, cluster_id, now)
+
+    def pop_pending(self, response_id: str) -> Optional[Tuple[Dict[str, float], Optional[str]]]:
+        if response_id in self.pending:
+            shares, cluster_id, _ = self.pending.pop(response_id)
+            return shares, cluster_id
+        return None
+
+    def gc_pending(self, max_age_sec: float, now: Optional[float] = None) -> int:
+        if now is None:
+            now = time.time()
+        expired = [rid for rid, (_, _, created) in self.pending.items() if created < now - max_age_sec]
+        for rid in expired:
+            self.pending.pop(rid)
+        return len(expired)
+
