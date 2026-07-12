@@ -483,4 +483,3 @@ def compute_credit_shares(sims: Dict[str, float], smoothing: float = 0.10) -> Di
         for cid in sims:
             shares[cid] = share
     return shares
-

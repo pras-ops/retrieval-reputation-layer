@@ -3,14 +3,12 @@ import os
 import sys
 import tempfile
 import subprocess
-from typing import Dict
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from rrl.store import Candidate, CandidateStore
 from rrl.store_sqlite import SqliteCandidateStore
 from rrl.layer import ReputationLayer
-from rrl.feedback import OutcomeSignals
 
 
 class TestLayerLogic(unittest.TestCase):
@@ -122,7 +120,7 @@ class TestLayerLogic(unittest.TestCase):
             [sys.executable, "-c", cmd],
             capture_output=True,
             text=True,
-            env={"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))}
+            env={"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))},
         )
         self.assertEqual(res.returncode, 0, f"Bare import check failed: {res.stderr}")
 

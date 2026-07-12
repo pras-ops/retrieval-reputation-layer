@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "retrieval-reputation-layer"
-version = "0.1.0"
+version = "0.2.0"
 description = "RRL — a lightweight retrieval reputation layer that folds verified downstream outcomes into ranking (per-document Beta reputation with staleness decay and sycophancy safeguards)."
 readme = "README.md"
 requires-python = ">=3.10"

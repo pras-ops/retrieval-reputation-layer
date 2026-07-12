@@ -2,6 +2,7 @@
 RRL Candidate and Store Implementations
 Defines the Candidate dataclass with its Beta distribution counters and the CandidateStore.
 """
+
 from dataclasses import dataclass, field
 import datetime
 from typing import Dict, List, Optional, Tuple
@@ -13,7 +14,6 @@ def _decay(value: float, gamma: float, dt_units: float) -> float:
     if gamma >= 1.0 or dt_units <= 0:
         return value
     return 1.0 + (value - 1.0) * (gamma**dt_units)
-
 
 
 @dataclass
@@ -141,8 +141,9 @@ class CandidateStore:
     def gc_pending(self, max_age_sec: float, now: Optional[float] = None) -> int:
         if now is None:
             now = time.time()
-        expired = [rid for rid, (_, _, created) in self.pending.items() if created < now - max_age_sec]
+        expired = [
+            rid for rid, (_, _, created) in self.pending.items() if created < now - max_age_sec
+        ]
         for rid in expired:
             self.pending.pop(rid)
         return len(expired)
-

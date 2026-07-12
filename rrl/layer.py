@@ -7,7 +7,7 @@ similarity dictionary outputs and updates document reputations based on outcomes
 from dataclasses import dataclass
 import random
 import uuid
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple
 
 from .store import Candidate, CandidateStore, _decay
 from .feedback import (
@@ -62,7 +62,6 @@ class ReputationLayer:
         else:
             candidate = Candidate(id=id, content=content, metadata=metadata or {})
             self.store.add_candidate(candidate)
-
 
     def rescore(
         self,
@@ -125,7 +124,6 @@ class ReputationLayer:
                     candidate.last_updated = now if now is not None else candidate.last_updated
                 alpha_global = candidate.alpha
                 beta_global = candidate.beta
-
 
             # Apply optimistic prior for cold-start / new docs
             if self.use_optimistic_prior and (
@@ -255,4 +253,3 @@ class ReputationLayer:
             robust_estimator_mode=self.robust_estimator_mode,
         )
         return shares
-

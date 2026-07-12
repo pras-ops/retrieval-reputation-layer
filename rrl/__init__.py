@@ -26,4 +26,3 @@ __all__ = [
     "update_counters_from_shares",
     "update_counters_with_signals",
 ]
-

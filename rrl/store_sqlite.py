@@ -51,7 +51,6 @@ CREATE TABLE IF NOT EXISTS settings (
 """
 
 
-
 class SqliteCandidateStore(CandidateStore):
     def __init__(
         self,

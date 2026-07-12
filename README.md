@@ -59,27 +59,31 @@ converge).
 ## Architecture
 
 ```
-              ┌──────────────┐   text query    ┌──────────────────────────┐
-  documents → │  ingest.py   │ ───────────────► │       retriever.py       │
-              │ chunk+embed  │                  │  hybrid RRF (vec + BM25) │
-              └──────────────┘                  │  + Beta exploration      │
-                                                │  + C_robust exploitation │
-                                                └────────────┬─────────────┘
-                                                             │ top-k + credit shares r(i)
-                          feedback (y)                       ▼
-   ┌──────────────┐   ┌──────────────────┐        ┌────────────────────────┐
-   │   judge.py   │──►│   feedback.py    │ ─────►  │  store.py / store_     │
-   │ (faithfulness│   │ outcome y, κ     │ counters│  sqlite.py (persistent,│
-   │  + fallback) │   │ liar counter,    │ update  │  atomic, lazy decay,   │
-   └──────────────┘   │ robust estimators│        │  pending bridge)       │
-                      └──────────────────┘        └────────────────────────┘
+  ANY retriever (yours, or the bundled retriever.py: hybrid vec+BM25, RRF-fused)
+        │
+        │  sims: {candidate_id: relevance}
+        ▼
+  ┌───────────────────────────────┐      counters       ┌────────────────────────┐
+  │           layer.py            │ ◄─────────────────► │  store.py / store_     │
+  │  ReputationLayer.rescore()    │                     │  sqlite.py (persistent,│
+  │  w_sim·sim + w_c·C_robust     │   pending shares    │  atomic, lazy decay,   │
+  │  + w_p·P + Thompson explore   │ ──────────────────► │  pending bridge)       │
+  └────────────┬──────────────────┘                     └───────────▲────────────┘
+               │ top-k + response_id                                │ counter update
+               ▼                                                    │
+        your generation step                          ┌─────────────┴────────────┐
+               │                    feedback (y)      │        feedback.py       │
+               └────────────────────────────────────► │  outcome y, κ, liar      │
+                 record_feedback(response_id, ...)    │  counter, robust est.    │
+                    (s_gt / s_behave / s_judge)       └──────────────────────────┘
 ```
 
 | Module | Responsibility |
 |---|---|
-| `rrl/store.py` | `Candidate` dataclass (α/β, A/B, `fooled`/`verified`, `recent_outcomes`) + in-memory `CandidateStore` |
+| `rrl/layer.py` | **`ReputationLayer`** — the retriever-agnostic core: `rescore()` (reputation scoring, Thompson-sampling exploration, ε-greedy, credit shares) and `record_feedback()` |
+| `rrl/store.py` | `Candidate` dataclass (α/β, A/B, `fooled`/`verified`, `recent_outcomes`) + in-memory `CandidateStore` (incl. `pending` bridge) |
 | `rrl/store_sqlite.py` | Persistent store: durable, **lazy decay**, **atomic increments**, `pending` (retrieve↔feedback bridge), schema migration |
-| `rrl/retriever.py` | Hybrid retrieval (SentenceTransformer + custom BM25, RRF-fused), Thompson-sampling exploration, rarity bonus, ε-greedy, robust exploitation estimate |
+| `rrl/retriever.py` | Optional bundled retriever: hybrid retrieval (SentenceTransformer + custom BM25, RRF-fused), delegating scoring to `ReputationLayer` |
 | `rrl/feedback.py` | Outcome aggregation `y`, soft κ-weighted update, liar counter, robust estimators, optional ADT denoising |
 | `rrl/judge.py` | LLM faithfulness judge (Gemini) with a token-overlap fallback when offline |
 | `rrl/ingest.py` | Document chunking + embedding into candidates |
@@ -273,7 +277,7 @@ Reported honestly — what the tests/sims actually establish, and what they don'
 ## Repository layout
 
 ```
-rrl/                  core library (store, retriever, feedback, judge, ingest, api, store_sqlite)
+rrl/                  core library (layer, store, retriever, feedback, judge, ingest, api, store_sqlite)
 sim/                  gates: verify_robustness.py, run_gate_a.py (value), run_gate_b.py (decay),
                       run_gate_c.py (no-recurrence boundary), run_gate_d.py (synthetic recurrence),
                       run_gate_recurring.py (realistic recurrence, MBPP), gate_c_verifier.py

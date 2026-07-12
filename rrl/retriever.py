@@ -7,7 +7,6 @@ Supports both real text queries (via SentenceTransformer + BM25) and pre-compute
 
 from collections import Counter
 import math
-import random
 import re
 from typing import Dict, List, Tuple, Optional, Union, Any
 
@@ -99,6 +98,7 @@ class Retriever:
 
         # Instantiate the reputation layer
         from .layer import ReputationLayer
+
         self.layer = ReputationLayer(
             store=self.store,
             weights=self.weights,
@@ -272,8 +272,8 @@ class Retriever:
         # Resolve IDs back to Candidate tuples for backward compatibility
         results = []
         for cid, score, sim in rescore_result.results:
-            cand = self.store.get_candidate(cid)
-            if cand:
-                results.append((cand, score, sim))
+            resolved = self.store.get_candidate(cid)
+            if resolved:
+                results.append((resolved, score, sim))
 
         return results
