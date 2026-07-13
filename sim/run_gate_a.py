@@ -10,14 +10,13 @@ import os
 import random
 import signal
 import sys
-import time
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple
 import matplotlib.pyplot as plt
 
 # Add parent directory to path so we can import rrl package
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from rrl.store import Candidate, CandidateStore
+from rrl.store import CandidateStore
 from rrl.ingest import Ingester
 from rrl.retriever import Retriever
 from rrl.feedback import OutcomeSignals, calculate_outcome, update_counters
@@ -129,7 +128,7 @@ CORPUS = {
         "shell of the planet, is broken into tectonic plates. Where plates meet, their relative motion "
         "determines the type of boundary: convergent (colliding, forming mountains or subduction zones), "
         "divergent (spreading apart, creating mid-ocean ridges), or transform (sliding past one another, causing earthquakes)."
-    )
+    ),
 }
 
 EVAL_QUERIES = [
@@ -142,51 +141,58 @@ EVAL_QUERIES = [
     ("What water-to-coffee ratio is best for pour-over coffee?", "doc_coffee_brewing"),
     ("How does backpropagation train an artificial neural network?", "doc_neural_networks"),
     ("What triggered the French Revolution and Bastille storming?", "doc_french_revolution"),
-    ("How do convergent and divergent tectonic plate boundaries differ?", "doc_crust_tectonics")
+    ("How do convergent and divergent tectonic plate boundaries differ?", "doc_crust_tectonics"),
 ]
 
 # Verification Rules representing independent objective proxies for answer correctness ( Finding 1 )
 GOLD_ANSWERS_INFO = {
     "doc_relational_db": {
         "gold_keywords": ["normalize", "normalization", "atomic", "dependency", "dependencies"],
-        "reject_keywords": ["ignore database normalization", "avoid database normalization", "ignore normalization", "avoid normalization", "comma-separated", "unnormalized"]
+        "reject_keywords": [
+            "ignore database normalization",
+            "avoid database normalization",
+            "ignore normalization",
+            "avoid normalization",
+            "comma-separated",
+            "unnormalized",
+        ],
     },
     "doc_cooking_pasta": {
         "gold_keywords": ["boil", "salt", "bite", "al dente", "pot", "uncovered"],
-        "reject_keywords": ["microwave", "cold water"]
+        "reject_keywords": ["microwave", "cold water"],
     },
     "doc_newtons_laws": {
         "gold_keywords": ["inertia", "force", "mass", "acceleration", "f=ma", "opposite reaction"],
-        "reject_keywords": []
+        "reject_keywords": [],
     },
     "doc_photosynthesis": {
         "gold_keywords": ["chloroplast", "chlorophyll", "calvin", "glucose", "split"],
-        "reject_keywords": []
+        "reject_keywords": [],
     },
     "doc_black_holes": {
         "gold_keywords": ["horizon", "gravity", "escape", "einstein", "relativity"],
-        "reject_keywords": []
+        "reject_keywords": [],
     },
     "doc_git_basics": {
         "gold_keywords": ["staging", "stage", "commit", "local repository"],
-        "reject_keywords": ["force push", "git push --force", "push --force"]
+        "reject_keywords": ["force push", "git push --force", "push --force"],
     },
     "doc_coffee_brewing": {
         "gold_keywords": ["16:1", "200", "bloom", "medium-coarse"],
-        "reject_keywords": ["8:1", "boiling water"]
+        "reject_keywords": ["8:1", "boiling water"],
     },
     "doc_neural_networks": {
         "gold_keywords": ["backpropagation", "gradient descent", "layers", "neurons", "weights"],
-        "reject_keywords": []
+        "reject_keywords": [],
     },
     "doc_french_revolution": {
         "gold_keywords": ["bastille", "1789", "famine", "monarchy", "napoleon"],
-        "reject_keywords": []
+        "reject_keywords": [],
     },
     "doc_crust_tectonics": {
         "gold_keywords": ["convergent", "divergent", "transform", "lithosphere", "plates"],
-        "reject_keywords": []
-    }
+        "reject_keywords": [],
+    },
 }
 
 
@@ -200,17 +206,17 @@ def verify_answer(target_doc_id: str, answer: str) -> float:
     if not info:
         return 1.0
     ans_lower = answer.lower()
-    
+
     # 1. Reject if unhelpful distractor patterns match
     for rj in info["reject_keywords"]:
         if rj in ans_lower:
             return 0.0
-            
+
     # 2. Require presence of at least one core gold concept
     matches = sum(1 for kw in info["gold_keywords"] if kw in ans_lower)
     if info["gold_keywords"] and matches == 0:
         return 0.0
-        
+
     return 1.0
 
 
@@ -223,7 +229,7 @@ def generate_answer(query: str, contexts: List[str]) -> str:
     client = _get_client()
     if client is None or types is None:
         return f"Based on the context: {' '.join(contexts)[:300]}"
-    
+
     context_str = "\n---\n".join(contexts)
     prompt = (
         "You are an assistant. Answer the user query based ONLY on the provided reference contexts. "
@@ -235,11 +241,11 @@ def generate_answer(query: str, contexts: List[str]) -> str:
     )
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.0,
-            )
+            ),
         )
         return response.text.strip()
     except Exception as e:
@@ -266,6 +272,7 @@ def main():
     def _global_timeout(signum, frame):
         print("\n\n*** GLOBAL TIMEOUT: evaluation exceeded 15 minutes. Aborting. ***")
         sys.exit(1)
+
     signal.signal(signal.SIGALRM, _global_timeout)
     signal.alarm(GLOBAL_TIMEOUT_SEC)
 
@@ -273,7 +280,7 @@ def main():
     print("RRL PHASE A VALIDATION RUNNER: ADAPTIVE RETRIEVER VS STATIC BASELINE (10-SEED SWEEP)")
     print("=" * 110)
 
-    seeds = list(range(42, 52)) # 10 seeds ( Finding 3 )
+    seeds = list(range(42, 52))  # 10 seeds ( Finding 3 )
     num_eval_steps = 150
     top_k = 1  # top_k=1 so coverage and retrieval correctness matter directly ( Finding 4 & 5 )
 
@@ -299,7 +306,7 @@ def main():
 
     for seed_idx, seed in enumerate(seeds):
         print(f"\n[Running Seed {seed} ({seed_idx + 1}/{len(seeds)})]...")
-        
+
         # Ingest corpus chunks into both stores
         store_static = CandidateStore()
         store_cag = CandidateStore()
@@ -331,7 +338,7 @@ def main():
             # A. Static Baseline Arm
             res_static = retriever_static.retrieve(query_text, top_k=top_k, explore=False)
             top_cand_static = res_static[0][0]
-            is_correct_static = (top_cand_static.metadata.get("doc_id") == target_doc_id)
+            is_correct_static = top_cand_static.metadata.get("doc_id") == target_doc_id
             s_recall1.append(1 if is_correct_static else 0)
 
             contexts_static = [r[0].content for r in res_static]
@@ -345,7 +352,9 @@ def main():
                 cache_hits += 1
             else:
                 ans_static = generate_answer(query_text, contexts_static)
-                score_static = evaluate_faithfulness(query_text, "\n".join(contexts_static), ans_static)
+                score_static = evaluate_faithfulness(
+                    query_text, "\n".join(contexts_static), ans_static
+                )
                 llm_cache[cache_key_static] = (ans_static, score_static)
                 cache_misses += 1
 
@@ -357,7 +366,7 @@ def main():
             # epsilon=0.0 forces Thompson Sampling to handle exploration (self-decaying)
             res_cag = retriever_cag.retrieve(query_text, top_k=top_k, explore=True, epsilon=0.0)
             top_cand_cag = res_cag[0][0]
-            is_correct_cag = (top_cand_cag.metadata.get("doc_id") == target_doc_id)
+            is_correct_cag = top_cand_cag.metadata.get("doc_id") == target_doc_id
             c_recall1.append(1 if is_correct_cag else 0)
 
             contexts_cag = [r[0].content for r in res_cag]
@@ -383,7 +392,7 @@ def main():
                 s_behave=0.75 if is_correct_ans_cag > 0.5 else 0.10,
                 s_gt=is_correct_ans_cag,
                 s_judge=score_cag,
-                s_expl=1.0 if is_correct_ans_cag > 0.5 else 0.0
+                s_expl=1.0 if is_correct_ans_cag > 0.5 else 0.0,
             )
             y = calculate_outcome(signals, use_safeguards=True)
             retrieved_sims_cag = {r[0].id: r[2] for r in res_cag}
@@ -396,12 +405,15 @@ def main():
                 decay_unit_sec=1.0,
                 credit_smoothing=0.50,
                 use_liar_counter=True,
-                signals=signals
+                signals=signals,
             )
 
         # Log seed progress
-        print(f"  Seed {seed} finished. [Recall@1 Static={sum(s_recall1)/len(s_recall1):.2f} | RRL={sum(c_recall1)/len(c_recall1):.2f}] "
-              f"[Correctness Static={sum(s_correctness)/len(s_correctness):.2f} | RRL={sum(c_correctness)/len(c_correctness):.2f}]", flush=True)
+        print(
+            f"  Seed {seed} finished. [Recall@1 Static={sum(s_recall1) / len(s_recall1):.2f} | RRL={sum(c_recall1) / len(c_recall1):.2f}] "
+            f"[Correctness Static={sum(s_correctness) / len(s_correctness):.2f} | RRL={sum(c_correctness) / len(c_correctness):.2f}]",
+            flush=True,
+        )
 
         # Record seed overall & late stage (last 30 steps) averages
         static_seed_recall1.append(sum(s_recall1) / len(s_recall1))
@@ -438,45 +450,75 @@ def main():
     words_cag_stats = sum(cag_seed_words) / len(cag_seed_words)
 
     print("\n" + "=" * 115)
-    print("DECISION-GRADE GATE A RESULTS: STATIC VS ADAPTIVE RRL (10-SEED SWEEP, TOP_K=1, UNBIASED VERIFIER)")
+    print(
+        "DECISION-GRADE GATE A RESULTS: STATIC VS ADAPTIVE RRL (10-SEED SWEEP, TOP_K=1, UNBIASED VERIFIER)"
+    )
     print("=" * 115)
     print(f"{'Metric':<35} | {'Static (Mean±Std [95% CI])':<38} | {'RRL (Mean±Std [95% CI])':<38}")
     print("-" * 115)
-    
+
     # Format Recall@1
-    print(f"{'Overall Recall@1':<35} | {recall1_static_stats[0]:.3f}±{recall1_static_stats[1]:.3f} [{recall1_static_stats[2]:.3f}, {recall1_static_stats[3]:.3f}] | {recall1_cag_stats[0]:.3f}±{recall1_cag_stats[1]:.3f} [{recall1_cag_stats[2]:.3f}, {recall1_cag_stats[3]:.3f}]")
-    print(f"{'Late-Stage Recall@1 (Last 30)':<35} | {recall1_static_late_stats[0]:.3f}±{recall1_static_late_stats[1]:.3f} [{recall1_static_late_stats[2]:.3f}, {recall1_static_late_stats[3]:.3f}] | {recall1_cag_late_stats[0]:.3f}±{recall1_cag_late_stats[1]:.3f} [{recall1_cag_late_stats[2]:.3f}, {recall1_cag_late_stats[3]:.3f}]")
+    print(
+        f"{'Overall Recall@1':<35} | {recall1_static_stats[0]:.3f}±{recall1_static_stats[1]:.3f} [{recall1_static_stats[2]:.3f}, {recall1_static_stats[3]:.3f}] | {recall1_cag_stats[0]:.3f}±{recall1_cag_stats[1]:.3f} [{recall1_cag_stats[2]:.3f}, {recall1_cag_stats[3]:.3f}]"
+    )
+    print(
+        f"{'Late-Stage Recall@1 (Last 30)':<35} | {recall1_static_late_stats[0]:.3f}±{recall1_static_late_stats[1]:.3f} [{recall1_static_late_stats[2]:.3f}, {recall1_static_late_stats[3]:.3f}] | {recall1_cag_late_stats[0]:.3f}±{recall1_cag_late_stats[1]:.3f} [{recall1_cag_late_stats[2]:.3f}, {recall1_cag_late_stats[3]:.3f}]"
+    )
     print("-" * 115)
-    
+
     # Format Answer Correctness
-    print(f"{'Overall Answer Correctness':<35} | {correct_static_stats[0]:.3f}±{correct_static_stats[1]:.3f} [{correct_static_stats[2]:.3f}, {correct_static_stats[3]:.3f}] | {correct_cag_stats[0]:.3f}±{correct_cag_stats[1]:.3f} [{correct_cag_stats[2]:.3f}, {correct_cag_stats[3]:.3f}]")
-    print(f"{'Late-Stage Correctness (Last 30)':<35} | {correct_static_late_stats[0]:.3f}±{correct_static_late_stats[1]:.3f} [{correct_static_late_stats[2]:.3f}, {correct_static_late_stats[3]:.3f}] | {correct_cag_late_stats[0]:.3f}±{correct_cag_late_stats[1]:.3f} [{correct_cag_late_stats[2]:.3f}, {correct_cag_late_stats[3]:.3f}]")
+    print(
+        f"{'Overall Answer Correctness':<35} | {correct_static_stats[0]:.3f}±{correct_static_stats[1]:.3f} [{correct_static_stats[2]:.3f}, {correct_static_stats[3]:.3f}] | {correct_cag_stats[0]:.3f}±{correct_cag_stats[1]:.3f} [{correct_cag_stats[2]:.3f}, {correct_cag_stats[3]:.3f}]"
+    )
+    print(
+        f"{'Late-Stage Correctness (Last 30)':<35} | {correct_static_late_stats[0]:.3f}±{correct_static_late_stats[1]:.3f} [{correct_static_late_stats[2]:.3f}, {correct_static_late_stats[3]:.3f}] | {correct_cag_late_stats[0]:.3f}±{correct_cag_late_stats[1]:.3f} [{correct_cag_late_stats[2]:.3f}, {correct_cag_late_stats[3]:.3f}]"
+    )
     print("-" * 115)
-    print(f"{'Avg Context Words (Tokens)':<35} | {words_static_stats:.1f}                                   | {words_cag_stats:.1f}")
+    print(
+        f"{'Avg Context Words (Tokens)':<35} | {words_static_stats:.1f}                                   | {words_cag_stats:.1f}"
+    )
     print("=" * 115)
 
     # 4. Generate Plot (Moving Average for Seed 42 trace)
     try:
+
         def moving_average(data: List[float], window_size: int = 15) -> List[float]:
             ret = []
             for i in range(len(data)):
                 start = max(0, i - window_size + 1)
-                window = data[start:i+1]
+                window = data[start : i + 1]
                 ret.append(sum(window) / len(window))
             return ret
 
         plt.figure(figsize=(10, 6))
-        plt.plot(moving_average(sample_static_recall_history), label="Static Baseline (Recall@1)", color="#dc2626", linewidth=2.5, linestyle="--")
-        plt.plot(moving_average(sample_cag_recall_history), label="RRL Feedback Loop (Recall@1)", color="#2563eb", linewidth=3.0)
-        
-        plt.title("Gate A (10-Seed Sweep): Recall@1 Learning Curve Comparison\n(Seed 42 Sample Trace - 15-Step Moving Average)", fontsize=12, fontweight="bold")
+        plt.plot(
+            moving_average(sample_static_recall_history),
+            label="Static Baseline (Recall@1)",
+            color="#dc2626",
+            linewidth=2.5,
+            linestyle="--",
+        )
+        plt.plot(
+            moving_average(sample_cag_recall_history),
+            label="RRL Feedback Loop (Recall@1)",
+            color="#2563eb",
+            linewidth=3.0,
+        )
+
+        plt.title(
+            "Gate A (10-Seed Sweep): Recall@1 Learning Curve Comparison\n(Seed 42 Sample Trace - 15-Step Moving Average)",
+            fontsize=12,
+            fontweight="bold",
+        )
         plt.xlabel("Query Step", fontsize=10)
         plt.ylabel("Recall@1 (Top Chunk matches Target)", fontsize=10)
         plt.ylim(0.0, 1.05)
         plt.grid(True, linestyle=":", alpha=0.6)
         plt.legend(loc="lower right")
-        
-        plot_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "gate_a_comparison.png"))
+
+        plot_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "gate_a_comparison.png")
+        )
         plt.savefig(plot_path, dpi=300)
         plt.close()
         print(f"\n[Success] Saved comparison plots to: {plot_path}")

@@ -41,7 +41,9 @@ def main():
     print(f"MULTI-SEED SAFEGUARD ISOLATION  ({len(SEEDS)} seeds, 25% sycophancy)")
     print(f"Tracking C(c3): true utility = {TRUE_UTIL_C3}.  Lower = better suppression.")
     print("=" * 78)
-    print(f"{'Config':<24} | {'mean C(c3)':>10} | {'std':>7} | {'min':>6} | {'max':>6} | {'|err|':>6}")
+    print(
+        f"{'Config':<24} | {'mean C(c3)':>10} | {'std':>7} | {'min':>6} | {'max':>6} | {'|err|':>6}"
+    )
     print("-" * 78)
 
     results = {}
@@ -72,7 +74,9 @@ def main():
     pooled = (gt_std**2 + none_std**2) ** 0.5
     print(f"\nGT-override-only minus No-safeguards: {gap:+.4f}  (pooled std ~{pooled:.4f})")
     if gap > pooled:
-        print("VERDICT: GT-override-only is worse than no safeguards beyond noise -> switch to BLEND.")
+        print(
+            "VERDICT: GT-override-only is worse than no safeguards beyond noise -> switch to BLEND."
+        )
     elif abs(gap) <= pooled:
         print("VERDICT: difference is within seed noise -> single-seed finding NOT confirmed.")
     else:

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 try:
     from google import genai
     from google.genai import types
+
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
@@ -31,9 +32,7 @@ class FaithfulnessRating(BaseModel):
     score: float = Field(
         description="Faithfulness score from 0.0 to 1.0. 1.0 means the answer is fully supported by the document chunk with no hallucination or mismatch. 0.0 means completely unsupported or contradicted."
     )
-    reason: str = Field(
-        description="A brief explanation for the assigned score."
-    )
+    reason: str = Field(description="A brief explanation for the assigned score.")
 
 
 def _heuristic_fallback_judge(document_chunk: str, generated_answer: str) -> float:
@@ -41,18 +40,35 @@ def _heuristic_fallback_judge(document_chunk: str, generated_answer: str) -> flo
     Fallback similarity/overlap judge when Vertex AI / Gemini API is unavailable.
     Measures overlap of important keywords between document chunk and generated answer.
     """
+
     def tokenize(text: str) -> set:
-        tokens = re.findall(r'\w+', text.lower())
+        tokens = re.findall(r"\w+", text.lower())
         # Filter out common short stopwords
-        stopwords = {"the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "with", "of", "is", "are"}
+        stopwords = {
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "with",
+            "of",
+            "is",
+            "are",
+        }
         return {t for t in tokens if len(t) > 2 and t not in stopwords}
 
     doc_tokens = tokenize(document_chunk)
     ans_tokens = tokenize(generated_answer)
-    
+
     if not ans_tokens:
         return 0.5
-        
+
     overlap = ans_tokens.intersection(doc_tokens)
     # Return percentage of answer keywords backed by the document
     score = len(overlap) / len(ans_tokens)
@@ -118,7 +134,7 @@ def evaluate_faithfulness(
 
     def _invoke():
         return client.models.generate_content(
-            model='gemini-2.5-flash',
+            model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -139,13 +155,17 @@ def evaluate_faithfulness(
                 return max(0.0, min(1.0, rating.score))
 
             except concurrent.futures.TimeoutError:
-                print(f"[Judge Warning] Gemini call timed out (attempt {attempt + 1}/{max_retries + 1}).")
+                print(
+                    f"[Judge Warning] Gemini call timed out (attempt {attempt + 1}/{max_retries + 1})."
+                )
             except Exception as e:
-                print(f"[Judge Warning] Gemini call failed ({e}) (attempt {attempt + 1}/{max_retries + 1}).")
+                print(
+                    f"[Judge Warning] Gemini call failed ({e}) (attempt {attempt + 1}/{max_retries + 1})."
+                )
 
             # Backoff before retry
             if attempt < max_retries:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
     finally:
         # Do not block on a still-running (timed-out) call.
         executor.shutdown(wait=False)

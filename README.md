@@ -1,5 +1,10 @@
 # RRL — A Retrieval Reputation Layer
 
+[![CI Status](https://github.com/pras-ops/retrieval-reputation-layer/actions/workflows/ci.yml/badge.svg)](https://github.com/pras-ops/retrieval-reputation-layer/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/retrieval-reputation-layer.svg)](https://pypi.org/project/retrieval-reputation-layer/)
+[![Python versions](https://img.shields.io/pypi/pyversions/retrieval-reputation-layer.svg)](https://pypi.org/project/retrieval-reputation-layer/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > **RRL** = **R**etrieval **R**eputation **L**ayer. *Not* to be confused with Cache-Augmented
 > Generation ("CAG"); RRL is a ranking-time reputation layer, not a retrieval-free method.
 
@@ -54,31 +59,36 @@ converge).
 ## Architecture
 
 ```
-              ┌──────────────┐   text query    ┌──────────────────────────┐
-  documents → │  ingest.py   │ ───────────────► │       retriever.py       │
-              │ chunk+embed  │                  │  hybrid RRF (vec + BM25) │
-              └──────────────┘                  │  + Beta exploration      │
-                                                │  + C_robust exploitation │
-                                                └────────────┬─────────────┘
-                                                             │ top-k + credit shares r(i)
-                          feedback (y)                       ▼
-   ┌──────────────┐   ┌──────────────────┐        ┌────────────────────────┐
-   │   judge.py   │──►│   feedback.py    │ ─────►  │  store.py / store_     │
-   │ (faithfulness│   │ outcome y, κ     │ counters│  sqlite.py (persistent,│
-   │  + fallback) │   │ liar counter,    │ update  │  atomic, lazy decay,   │
-   └──────────────┘   │ robust estimators│        │  pending bridge)       │
-                      └──────────────────┘        └────────────────────────┘
+  ANY retriever (yours, or the bundled retriever.py: hybrid vec+BM25, RRF-fused)
+        │
+        │  sims: {candidate_id: relevance}
+        ▼
+  ┌───────────────────────────────┐      counters       ┌────────────────────────┐
+  │           layer.py            │ ◄─────────────────► │  store.py / store_     │
+  │  ReputationLayer.rescore()    │                     │  sqlite.py (persistent,│
+  │  w_sim·sim + w_c·C_robust     │   pending shares    │  atomic, lazy decay,   │
+  │  + w_p·P + Thompson explore   │ ──────────────────► │  pending bridge)       │
+  └────────────┬──────────────────┘                     └───────────▲────────────┘
+               │ top-k + response_id                                │ counter update
+               ▼                                                    │
+        your generation step                          ┌─────────────┴────────────┐
+               │                    feedback (y)      │        feedback.py       │
+               └────────────────────────────────────► │  outcome y, κ, liar      │
+                 record_feedback(response_id, ...)    │  counter, robust est.    │
+                    (s_gt / s_behave / s_judge)       └──────────────────────────┘
 ```
 
 | Module | Responsibility |
 |---|---|
-| `rrl/store.py` | `Candidate` dataclass (α/β, A/B, `fooled`/`verified`, `recent_outcomes`) + in-memory `CandidateStore` |
+| `rrl/layer.py` | **`ReputationLayer`** — the retriever-agnostic core: `rescore()` (reputation scoring, Thompson-sampling exploration, ε-greedy, credit shares) and `record_feedback()` |
+| `rrl/store.py` | `Candidate` dataclass (α/β, A/B, `fooled`/`verified`, `recent_outcomes`) + in-memory `CandidateStore` (incl. `pending` bridge) |
 | `rrl/store_sqlite.py` | Persistent store: durable, **lazy decay**, **atomic increments**, `pending` (retrieve↔feedback bridge), schema migration |
-| `rrl/retriever.py` | Hybrid retrieval (SentenceTransformer + custom BM25, RRF-fused), Thompson-sampling exploration, rarity bonus, ε-greedy, robust exploitation estimate |
+| `rrl/retriever.py` | Optional bundled retriever: hybrid retrieval (SentenceTransformer + custom BM25, RRF-fused), delegating scoring to `ReputationLayer` |
 | `rrl/feedback.py` | Outcome aggregation `y`, soft κ-weighted update, liar counter, robust estimators, optional ADT denoising |
 | `rrl/judge.py` | LLM faithfulness judge (Gemini) with a token-overlap fallback when offline |
 | `rrl/ingest.py` | Document chunking + embedding into candidates |
 | `rrl/api.py` | FastAPI service: `POST /retrieve`, `POST /feedback`, `GET /health` |
+| `rrl/integrations/` | Optional adapters: `langchain.py` (`RRLRetriever`), `llama_index.py` (`RRLLlamaIndexRetriever`) |
 
 ---
 
@@ -87,45 +97,38 @@ converge).
 Requires Python 3.10+. Install the package with the extras you need:
 
 ```bash
-pip install -e .                 # core retrieval (sentence-transformers, numpy, scipy, scikit-learn)
+pip install -e .                 # core reputation layer (only requires numpy)
+pip install -e ".[embeddings]"   # + built-in retriever support (sentence-transformers)
 pip install -e ".[api]"          # + FastAPI service
 pip install -e ".[llm]"          # + live LLM judge (else heuristic fallback)
-pip install -e ".[dev]"          # + simulations/plots and the test suite
+pip install -e ".[dev]"          # + simulations, plots, and testing (includes scipy, scikit-learn)
 pip install -e ".[api,llm,dev]"  # everything
 ```
 
 To reproduce the benchmark gates against the exact validated dependency versions, use the
 pinned set instead: `pip install -r requirements.txt`.
 
-> The first retrieval downloads the `all-MiniLM-L6-v2` model (~80 MB). The LLM judge needs
-> `GEMINI_API_KEY` or Vertex AI credentials; without them it falls back to a local heuristic.
+> [!NOTE]
+> The first retrieval using the built-in retriever downloads the `all-MiniLM-L6-v2` model (~80 MB).
+> The LLM judge needs `GEMINI_API_KEY` or Vertex AI credentials; without them it falls back to a local heuristic.
 
 ---
 
 ## Quickstart (library)
 
 ```python
-from rrl.store import CandidateStore
-from rrl.ingest import Ingester
-from rrl.retriever import Retriever
-from rrl.feedback import OutcomeSignals, update_counters
+from rrl import CandidateStore, ReputationLayer
 
 store = CandidateStore()
-ingester = Ingester()
-ingester.ingest_document(store, "doc1", "Long document text ...")
+layer = ReputationLayer(store)
 
-# weights = (w_sim, w_c, w_p, w_explore)
-retriever = Retriever(store, weights=(0.20, 0.40, 0.10, 0.30))
+# 1. Provide candidate relevance scores from ANY retriever:
+res = layer.rescore({"doc1": 0.9, "doc2": 0.4}, top_k=2)
 
-results = retriever.retrieve("my question", top_k=3, explore=True)
-retrieved_sims = {cand.id: sim for cand, score, sim in results}
-
-# After observing how the answer landed, feed an outcome back:
-signals = OutcomeSignals(s_behave=0.9, s_gt=1.0, s_judge=0.8, s_expl=1.0)
-from rrl.feedback import calculate_outcome
-y = calculate_outcome(signals)                 # y in [0,1]
-update_counters(store, retrieved_sims, y, signals=signals)
+# 2. Record downstream feedback (behavior, ground-truth tests, judge, etc.)
+layer.record_feedback(res.response_id, s_behave=0.75, s_gt=1.0)
 ```
+
 
 ## Quickstart (API)
 
@@ -146,6 +149,36 @@ curl -X POST localhost:8000/feedback -H 'content-type: application/json' \
 `/retrieve` persists the frozen credit shares to the `pending` table; `/feedback` pops them
 and applies the update through the store's **atomic** `increment()` — safe under concurrent
 requests.
+
+---
+
+## Quickstart (LangChain / LlamaIndex)
+
+Adapters wrap the bundled `Retriever` for use inside existing chains/pipelines.
+
+```bash
+pip install "retrieval-reputation-layer[embeddings,langchain]"    # or [embeddings,llamaindex]
+```
+
+```python
+from rrl.integrations.langchain import RRLRetriever
+from rrl.feedback import OutcomeSignals
+
+lc_retriever = RRLRetriever(rrl_retriever=retriever)   # retriever = rrl.Retriever(store)
+docs = lc_retriever.invoke("how do I avoid db anomalies?")
+
+# After observing the outcome downstream:
+lc_retriever.record_feedback(docs, OutcomeSignals(s_behave=0.9, s_gt=1.0))
+```
+
+`rrl.integrations.llama_index.RRLLlamaIndexRetriever` follows the same shape for LlamaIndex's
+`BaseRetriever` / `NodeWithScore`.
+
+> **Scope note:** these adapters currently feed back through `update_counters()` with one
+> shared outcome per retrieval batch — the simpler, batch-level path, not the per-response
+> `response_id` credit-share bridge used by `ReputationLayer`/the FastAPI service. Prefer
+> `ReputationLayer.rescore()` directly (see the library quickstart above) if you need
+> per-document credit attribution inside a custom pipeline.
 
 ---
 
@@ -230,6 +263,9 @@ Reported honestly — what the tests/sims actually establish, and what they don'
   benchmark below.
   
   ![Gate D Comparison](sim/gate_d_comparison.png)
+- **Gate E — realistic recurring-query benchmark** (`sim/run_gate_recurring.py`, MBPP): 10 independent seeds, 8 recurring epochs, **real Gemini generation**, **real unit-test verifier**. Under natural recurrence of programming problem families, RRL with global counters beats a strong cross-encoder baseline. Overall pass rate: static baseline **54.0% [40.6%, 67.4%]** vs RRL **56.9% [50.9%, 62.8%]**. Late-stage pass rate: static baseline **54.2% [39.9%, 68.5%]** vs RRL **59.0% [52.5%, 65.4%]**.
+
+  ![Gate E Comparison](sim/gate_recurring_comparison.png)
 
 ### Boundary condition ⛔ — stated, not hidden
 - **Gate C — no recurrence → a strong reranker wins** (`sim/run_gate_c.py`): one-shot HumanEval
@@ -242,9 +278,6 @@ Reported honestly — what the tests/sims actually establish, and what they don'
   ![Gate C Comparison](sim/gate_c_comparison.png)
 
 ### NOT yet validated ⚠️ (the important part)
-- **Realistic recurring-query benchmark — IN PROGRESS.** The recurrence win (Gate D) is on a
-  *synthetic* hint corpus. The honest next step is the same result on a **real** corpus with
-  naturally recurring problem families (`sim/run_gate_recurring.py`, MBPP).
 - **No-verifier case — UNPROVEN.** Every gate above uses a hard verifier. Behavior on purely
   behavioral/judge feedback (no `s_gt`) is bounded by the robustness limits below.
 - **Query-conditional clustering — EXPERIMENTAL.** The "reputation per query-kind" variant
@@ -275,7 +308,7 @@ Reported honestly — what the tests/sims actually establish, and what they don'
 ## Repository layout
 
 ```
-rrl/                  core library (store, retriever, feedback, judge, ingest, api, store_sqlite)
+rrl/                  core library (layer, store, retriever, feedback, judge, ingest, api, store_sqlite)
 sim/                  gates: verify_robustness.py, run_gate_a.py (value), run_gate_b.py (decay),
                       run_gate_c.py (no-recurrence boundary), run_gate_d.py (synthetic recurrence),
                       run_gate_recurring.py (realistic recurrence, MBPP), gate_c_verifier.py
@@ -322,20 +355,16 @@ see [RELATED_WORK.md](RELATED_WORK.md) for the honest gap list.
 
 ## Future work
 
-1. **Realistic recurring-query benchmark** — reproduce the Gate D recurrence win on a *real*
-   corpus with naturally recurring problem families (MBPP), not the synthetic hint corpus.
-   (`sim/run_gate_recurring.py`.)
-2. **Query-conditional reputation (clustering).** Learn "what worked *for this kind of query*"
+1. **Query-conditional reputation (clustering).** Learn "what worked *for this kind of query*"
    rather than globally. Implemented but **not validated** — needs evidence on cluster
    stability, fragmentation, sparse-cluster shrinkage, and clustered-vs-global lift before it
    is a claim rather than a proposal.
-3. **Strong-stack comparison.** *Strong Stack* vs *Strong Stack + RRL* (hybrid retrieval +
+2. **Strong-stack comparison.** *Strong Stack* vs *Strong Stack + RRL* (hybrid retrieval +
    query rewriting + multi-query + agent memory), not just retriever-level. The eventual
    deployment-relevant test.
-4. **No-verifier validation** — behavior under purely behavioral/judge feedback (e.g.
+3. **No-verifier validation** — behavior under purely behavioral/judge feedback (e.g.
    cross-model agreement as a pseudo-verifier).
-5. **Degeneracy monitoring** (retrieval concentration / coverage) before any real deployment.
-6. **Package** as a pip-installable layer over LangChain / LlamaIndex retriever interfaces.
+4. **Degeneracy monitoring** (retrieval concentration / coverage) before any real deployment.
 
 See `ROADMAP.md` for the full plan.
 

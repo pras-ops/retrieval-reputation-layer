@@ -11,8 +11,7 @@ Saves plots to sim/results.png, sim/noise_sweep.png, and sim/counter_drift.png.
 import os
 import random
 import sys
-import time
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
 # Add parent directory to path so we can import rrl package
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -72,18 +71,16 @@ def generate_query_similarities(step: int) -> Tuple[Dict[str, float], Dict[str, 
         # Add some random query variation (noise) to similarity scores
         noise_v = random.gauss(0, 0.08)
         noise_b = random.gauss(0, 0.08)
-        
+
         # Keep scores bounded in [0.01, 0.99]
         vector_scores[cid] = max(0.01, min(0.99, base_sim + noise_v))
         bm25_scores[cid] = max(0.01, min(0.99, base_sim + noise_b))
-        
+
     return vector_scores, bm25_scores
 
 
 def simulate_user_feedback(
-    utility: float,
-    noise_level: float = 0.0,
-    sycophancy_prob: float = 0.0
+    utility: float, noise_level: float = 0.0, sycophancy_prob: float = 0.0
 ) -> OutcomeSignals:
     """
     Simulates outcome signals based on candidate's hidden ground-truth utility.
@@ -140,19 +137,19 @@ def run_simulation(
     sycophancy_prob: float = 0.0,
     cap_behave: bool = True,
     gt_override: bool = True,
-    seed: int = 42
+    seed: int = 42,
 ) -> Tuple[List[float], Dict[str, List[float]], Dict[str, Candidate]]:
     """
     Runs a single simulation run.
     """
     random.seed(seed)
-    
+
     store = setup_store()
     retriever = Retriever(store, weights=weights)
-    
+
     retrieved_utilities = []
     c_histories = {cid: [] for cid, _, _, _ in CANDIDATE_DEFS}
-    
+
     current_time = 0.0
 
     for step in range(NUM_STEPS):
@@ -160,40 +157,38 @@ def run_simulation(
         for cid in c_histories:
             cand = store.get_candidate(cid)
             c_histories[cid].append(cand.alpha / (cand.alpha + cand.beta))
-            
+
         # 2. Generate similarities for this query
         vector_scores, bm25_scores = generate_query_similarities(step)
-        
+
         # 3. Retrieve candidates
         results = retriever.retrieve(
             vector_scores=vector_scores,
             bm25_scores=bm25_scores,
             top_k=TOP_K,
             explore=explore,
-            epsilon=0.30 if explore else 0.0
+            epsilon=0.30 if explore else 0.0,
         )
-        
+
         # Record average utility of retrieved documents in this step
         step_utility = sum(r[0].metadata["hidden_utility"] for r in results) / len(results)
         retrieved_utilities.append(step_utility)
-        
+
         # 4. Simulate user feedback and update counters
         retrieved_sims = {r[0].id: r[2] for r in results}
-        
+
         # Gather signals and calculate joint outcome y
         total_y = 0.0
         for cand, _, _ in results:
             true_util = cand.metadata["hidden_utility"]
             signals = simulate_user_feedback(
-                utility=true_util,
-                noise_level=noise_level,
-                sycophancy_prob=sycophancy_prob
+                utility=true_util, noise_level=noise_level, sycophancy_prob=sycophancy_prob
             )
             y = calculate_outcome(signals, cap_behave=cap_behave, gt_override=gt_override)
             total_y += y if y is not None else 0.5
-            
+
         avg_y = total_y / len(results)
-        
+
         # Update store counters with decay and credit smoothing
         current_time += DECAY_UNIT_STEPS
         update_counters(
@@ -203,7 +198,7 @@ def run_simulation(
             current_timestamp=current_time,
             gamma=GAMMA,
             decay_unit_sec=DECAY_UNIT_STEPS,
-            credit_smoothing=0.50
+            credit_smoothing=0.50,
         )
 
     return retrieved_utilities, c_histories, store.candidates
@@ -215,13 +210,13 @@ def print_ascii_results(
     util_balanced: List[float],
     cands_exploit: Dict[str, Candidate],
     cands_weak: Dict[str, Candidate],
-    cands_balanced: Dict[str, Candidate]
+    cands_balanced: Dict[str, Candidate],
 ) -> None:
     """Prints a beautiful summary of the simulation results in the terminal."""
     print("=" * 80)
     print("SIMULATION RESULTS COMPARISON SUMMARY")
     print("=" * 80)
-    
+
     # Calculate overall metrics
     def calc_stats(data: List[float]) -> Tuple[float, float]:
         avg_overall = sum(data) / len(data)
@@ -232,27 +227,37 @@ def print_ascii_results(
     stats_weak = calc_stats(util_weak)
     stats_balanced = calc_stats(util_balanced)
 
-    print(f"{'Metric':<30} | {'Baseline (Exploit)':<18} | {'Weak Exp (70/20/10/0)':<20} | {'Balanced Exp (20/40/10/30)':<22}")
+    print(
+        f"{'Metric':<30} | {'Baseline (Exploit)':<18} | {'Weak Exp (70/20/10/0)':<20} | {'Balanced Exp (20/40/10/30)':<22}"
+    )
     print("-" * 98)
-    print(f"{'Overall Avg Utility':<30} | {stats_exploit[0]:.4f}             | {stats_weak[0]:.4f}               | {stats_balanced[0]:.4f}")
-    print(f"{'Late Stage (Last 50) Avg':<30} | {stats_exploit[1]:.4f}             | {stats_weak[1]:.4f}               | {stats_balanced[1]:.4f}")
+    print(
+        f"{'Overall Avg Utility':<30} | {stats_exploit[0]:.4f}             | {stats_weak[0]:.4f}               | {stats_balanced[0]:.4f}"
+    )
+    print(
+        f"{'Late Stage (Last 50) Avg':<30} | {stats_exploit[1]:.4f}             | {stats_weak[1]:.4f}               | {stats_balanced[1]:.4f}"
+    )
     print("-" * 98)
-    
+
     print("\nCandidate Convergence Analysis (True utility vs Learned expectations C(i)):")
-    print(f"{'Candidate ID / Title':<38} | {'True U':<6} | {'Exploit C(i)':<12} | {'Weak Exp C(i)':<13} | {'Balanced Exp C(i)':<16}")
+    print(
+        f"{'Candidate ID / Title':<38} | {'True U':<6} | {'Exploit C(i)':<12} | {'Weak Exp C(i)':<13} | {'Balanced Exp C(i)':<16}"
+    )
     print("-" * 98)
-    
+
     for cid, name, true_u, _ in CANDIDATE_DEFS:
         c_opt = cands_exploit[cid]
         c_opt_val = c_opt.alpha / (c_opt.alpha + c_opt.beta)
-        
+
         c_weak = cands_weak[cid]
         c_weak_val = c_weak.alpha / (c_weak.alpha + c_weak.beta)
 
         c_bal = cands_balanced[cid]
         c_bal_val = c_bal.alpha / (c_bal.alpha + c_bal.beta)
-        
-        print(f"{cid:<3} - {name[:30]:<30} | {true_u:<6.2f} | {c_opt_val:<12.4f} | {c_weak_val:<13.4f} | {c_bal_val:<16.4f}")
+
+        print(
+            f"{cid:<3} - {name[:30]:<30} | {true_u:<6.2f} | {c_opt_val:<12.4f} | {c_weak_val:<13.4f} | {c_bal_val:<16.4f}"
+        )
     print("=" * 80)
 
 
@@ -260,41 +265,86 @@ def generate_plot(
     util_exploit: List[float],
     util_weak: List[float],
     util_balanced: List[float],
-    hist_balanced: Dict[str, List[float]]
+    hist_balanced: Dict[str, List[float]],
 ):
     """Generates and saves the performance plot."""
     try:
         # pyrefly: ignore [missing-import]
         import matplotlib.pyplot as plt
-        
+
         def moving_average(data: List[float], window_size: int = 15) -> List[float]:
             ret = []
             for i in range(len(data)):
                 start = max(0, i - window_size + 1)
-                window = data[start:i+1]
+                window = data[start : i + 1]
                 ret.append(sum(window) / len(window))
             return ret
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
 
         # Plot 1: Usefulness over time
-        ax1.plot(moving_average(util_exploit), label="Baseline Exploitation (70/20/10, explore=False)", color="#dc2626", linewidth=2, linestyle="--")
-        ax1.plot(moving_average(util_weak), label="Weak Exploration (70/20/10, explore=True)", color="#f59e0b", linewidth=2, linestyle=":")
-        ax1.plot(moving_average(util_balanced), label="Balanced Exploration (20/40/10/30, explore=True)", color="#2563eb", linewidth=3)
-        
-        ax1.set_title("Average Retrieved Utility over Time\n(15-Step Moving Average)", fontsize=12, fontweight="bold")
+        ax1.plot(
+            moving_average(util_exploit),
+            label="Baseline Exploitation (70/20/10, explore=False)",
+            color="#dc2626",
+            linewidth=2,
+            linestyle="--",
+        )
+        ax1.plot(
+            moving_average(util_weak),
+            label="Weak Exploration (70/20/10, explore=True)",
+            color="#f59e0b",
+            linewidth=2,
+            linestyle=":",
+        )
+        ax1.plot(
+            moving_average(util_balanced),
+            label="Balanced Exploration (20/40/10/30, explore=True)",
+            color="#2563eb",
+            linewidth=3,
+        )
+
+        ax1.set_title(
+            "Average Retrieved Utility over Time\n(15-Step Moving Average)",
+            fontsize=12,
+            fontweight="bold",
+        )
         ax1.set_xlabel("Query Step", fontsize=10)
         ax1.set_ylabel("Average Utility of Top-K Candidates", fontsize=10)
         ax1.grid(True, linestyle=":", alpha=0.6)
         ax1.legend(loc="lower right")
 
         # Plot 2: Evolution of C(i) for key candidates
-        ax2.plot(hist_balanced["c0"], label="c0 - Hidden Gem (True U = 0.95, base sim = 0.2)", color="#10b981", linewidth=2.5)
-        ax2.plot(hist_balanced["c3"], label="c3 - Fool's Gold (True U = 0.15, base sim = 0.9)", color="#ef4444", linewidth=2.5)
-        ax2.plot(hist_balanced["c2"], label="c2 - Standard Doc (True U = 0.75, base sim = 0.7)", color="#6366f1", linewidth=2)
-        ax2.plot(hist_balanced["c1"], label="c1 - Solid Reference (True U = 0.85, base sim = 0.5)", color="#a855f7", linewidth=2)
-        
-        ax2.set_title("Learned Value Expectation C(i) Over Time\n(Balanced Exploration 20/40/10/30)", fontsize=12, fontweight="bold")
+        ax2.plot(
+            hist_balanced["c0"],
+            label="c0 - Hidden Gem (True U = 0.95, base sim = 0.2)",
+            color="#10b981",
+            linewidth=2.5,
+        )
+        ax2.plot(
+            hist_balanced["c3"],
+            label="c3 - Fool's Gold (True U = 0.15, base sim = 0.9)",
+            color="#ef4444",
+            linewidth=2.5,
+        )
+        ax2.plot(
+            hist_balanced["c2"],
+            label="c2 - Standard Doc (True U = 0.75, base sim = 0.7)",
+            color="#6366f1",
+            linewidth=2,
+        )
+        ax2.plot(
+            hist_balanced["c1"],
+            label="c1 - Solid Reference (True U = 0.85, base sim = 0.5)",
+            color="#a855f7",
+            linewidth=2,
+        )
+
+        ax2.set_title(
+            "Learned Value Expectation C(i) Over Time\n(Balanced Exploration 20/40/10/30)",
+            fontsize=12,
+            fontweight="bold",
+        )
         ax2.set_xlabel("Query Step", fontsize=10)
         ax2.set_ylabel("C(i) = alpha / (alpha + beta)", fontsize=10)
         ax2.set_ylim(0.0, 1.0)
@@ -307,7 +357,7 @@ def generate_plot(
         plt.savefig(plot_path, dpi=300)
         plt.close()
         print(f"[Success] Saved performance plot to: {plot_path}")
-        
+
     except ImportError:
         print("[Warning] Matplotlib not found. Skipping plot generation.")
 
@@ -320,10 +370,10 @@ def run_noise_sweep_simulations():
     print("\n" + "=" * 80)
     print("RUNNING FEEDBACK NOISE SWEEP (0% to 40%)")
     print("=" * 80)
-    
+
     noise_levels = [0.0, 0.10, 0.20, 0.30, 0.40]
     seeds = [42, 43, 44]
-    
+
     balanced_results = []
     exploit_results = []
 
@@ -332,35 +382,61 @@ def run_noise_sweep_simulations():
         exploit_run_utils = []
         for seed in seeds:
             # Balanced Exploration weights (0.20, 0.40, 0.10, 0.30)
-            u_bal, _, _ = run_simulation(explore=True, weights=(0.20, 0.40, 0.10, 0.30), noise_level=noise, seed=seed)
+            u_bal, _, _ = run_simulation(
+                explore=True, weights=(0.20, 0.40, 0.10, 0.30), noise_level=noise, seed=seed
+            )
             # Baseline Exploitation weights (0.70, 0.20, 0.10, 0.0)
-            u_exp, _, _ = run_simulation(explore=False, weights=(0.70, 0.20, 0.10, 0.0), noise_level=noise, seed=seed)
-            
+            u_exp, _, _ = run_simulation(
+                explore=False, weights=(0.70, 0.20, 0.10, 0.0), noise_level=noise, seed=seed
+            )
+
             # Record average late stage usefulness (last 100 steps)
             balanced_run_utils.append(sum(u_bal[-100:]) / 100.0)
             exploit_run_utils.append(sum(u_exp[-100:]) / 100.0)
-            
+
         avg_bal = sum(balanced_run_utils) / len(seeds)
         avg_exp = sum(exploit_run_utils) / len(seeds)
-        
+
         balanced_results.append(avg_bal)
         exploit_results.append(avg_exp)
-        
-        print(f"Noise Level: {noise * 100:.0f}% | Avg Late-Stage Utility - Balanced: {avg_bal:.4f} | Exploit: {avg_exp:.4f}")
+
+        print(
+            f"Noise Level: {noise * 100:.0f}% | Avg Late-Stage Utility - Balanced: {avg_bal:.4f} | Exploit: {avg_exp:.4f}"
+        )
 
     # Generate Plot
     try:
         import matplotlib.pyplot as plt
+
         plt.figure(figsize=(8, 5))
-        plt.plot([n * 100 for n in noise_levels], balanced_results, marker="o", label="Balanced Exploration (20/40/10/30)", color="#2563eb", linewidth=2.5)
-        plt.plot([n * 100 for n in noise_levels], exploit_results, marker="s", label="Baseline Exploitation", color="#dc2626", linewidth=2, linestyle="--")
-        plt.title("Noise Tolerance Analysis\n(Late-Stage Retrieved Utility vs. Feedback Noise)", fontsize=12, fontweight="bold")
+        plt.plot(
+            [n * 100 for n in noise_levels],
+            balanced_results,
+            marker="o",
+            label="Balanced Exploration (20/40/10/30)",
+            color="#2563eb",
+            linewidth=2.5,
+        )
+        plt.plot(
+            [n * 100 for n in noise_levels],
+            exploit_results,
+            marker="s",
+            label="Baseline Exploitation",
+            color="#dc2626",
+            linewidth=2,
+            linestyle="--",
+        )
+        plt.title(
+            "Noise Tolerance Analysis\n(Late-Stage Retrieved Utility vs. Feedback Noise)",
+            fontsize=12,
+            fontweight="bold",
+        )
         plt.xlabel("Feedback Noise Level (%)", fontsize=10)
         plt.ylabel("Late-Stage Average Retrieved Utility", fontsize=10)
         plt.ylim(0.3, 0.7)
         plt.grid(True, linestyle=":", alpha=0.6)
         plt.legend(loc="best")
-        
+
         plot_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "noise_sweep.png"))
         plt.savefig(plot_path, dpi=300)
         plt.close()
@@ -386,7 +462,7 @@ def run_sycophancy_drift_simulations():
         sycophancy_prob=0.25,
         cap_behave=True,
         gt_override=True,
-        seed=42
+        seed=42,
     )
 
     # 2. Run with cap_behave only (GT override disabled)
@@ -396,7 +472,7 @@ def run_sycophancy_drift_simulations():
         sycophancy_prob=0.25,
         cap_behave=True,
         gt_override=False,
-        seed=42
+        seed=42,
     )
 
     # 3. Run with gt_override only (Cap behave disabled)
@@ -406,7 +482,7 @@ def run_sycophancy_drift_simulations():
         sycophancy_prob=0.25,
         cap_behave=False,
         gt_override=True,
-        seed=42
+        seed=42,
     )
 
     # 4. Run with no safeguards
@@ -416,7 +492,7 @@ def run_sycophancy_drift_simulations():
         sycophancy_prob=0.25,
         cap_behave=False,
         gt_override=False,
-        seed=42
+        seed=42,
     )
 
     c3_both_final = final_both["c3"].alpha / (final_both["c3"].alpha + final_both["c3"].beta)
@@ -432,20 +508,48 @@ def run_sycophancy_drift_simulations():
     # Generate Plot
     try:
         import matplotlib.pyplot as plt
+
         plt.figure(figsize=(9, 5))
-        plt.plot(hist_both["c3"], label="Both Safeguards (Asymmetry + GT Override)", color="#10b981", linewidth=2.5)
-        plt.plot(hist_cap["c3"], label="Cap Behave Only (Asymmetry)", color="#3b82f6", linewidth=2, linestyle="-.")
-        plt.plot(hist_gt["c3"], label="GT Override Only (Verifier)", color="#a855f7", linewidth=2, linestyle=":")
-        plt.plot(hist_none["c3"], label="No Safeguards (Symmetric + Blended)", color="#ef4444", linewidth=2, linestyle="--")
+        plt.plot(
+            hist_both["c3"],
+            label="Both Safeguards (Asymmetry + GT Override)",
+            color="#10b981",
+            linewidth=2.5,
+        )
+        plt.plot(
+            hist_cap["c3"],
+            label="Cap Behave Only (Asymmetry)",
+            color="#3b82f6",
+            linewidth=2,
+            linestyle="-.",
+        )
+        plt.plot(
+            hist_gt["c3"],
+            label="GT Override Only (Verifier)",
+            color="#a855f7",
+            linewidth=2,
+            linestyle=":",
+        )
+        plt.plot(
+            hist_none["c3"],
+            label="No Safeguards (Symmetric + Blended)",
+            color="#ef4444",
+            linewidth=2,
+            linestyle="--",
+        )
         plt.axhline(0.15, color="black", linestyle=":", alpha=0.5, label="True Utility (0.15)")
-        
-        plt.title("Sycophancy Mitigation Analysis\n(Value Expectation C(i) of Fool's Gold under 25% Sycophancy)", fontsize=12, fontweight="bold")
+
+        plt.title(
+            "Sycophancy Mitigation Analysis\n(Value Expectation C(i) of Fool's Gold under 25% Sycophancy)",
+            fontsize=12,
+            fontweight="bold",
+        )
         plt.xlabel("Query Step", fontsize=10)
         plt.ylabel("Learned Expectation C(c3) = alpha / (alpha + beta)", fontsize=10)
         plt.ylim(0.0, 1.0)
         plt.grid(True, linestyle=":", alpha=0.6)
         plt.legend(loc="best")
-        
+
         plot_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "counter_drift.png"))
         plt.savefig(plot_path, dpi=300)
         plt.close()
@@ -456,11 +560,17 @@ def run_sycophancy_drift_simulations():
 
 if __name__ == "__main__":
     print("Running standard Phase 1 simulations...")
-    util_exploit, hist_exploit, final_exploit = run_simulation(explore=False, weights=(0.70, 0.20, 0.10, 0.0))
+    util_exploit, hist_exploit, final_exploit = run_simulation(
+        explore=False, weights=(0.70, 0.20, 0.10, 0.0)
+    )
     util_weak, hist_weak, final_weak = run_simulation(explore=True, weights=(0.70, 0.20, 0.10, 0.0))
-    util_balanced, hist_balanced, final_balanced = run_simulation(explore=True, weights=(0.20, 0.40, 0.10, 0.30))
-    
-    print_ascii_results(util_exploit, util_weak, util_balanced, final_exploit, final_weak, final_balanced)
+    util_balanced, hist_balanced, final_balanced = run_simulation(
+        explore=True, weights=(0.20, 0.40, 0.10, 0.30)
+    )
+
+    print_ascii_results(
+        util_exploit, util_weak, util_balanced, final_exploit, final_weak, final_balanced
+    )
     generate_plot(util_exploit, util_weak, util_balanced, hist_balanced)
 
     # Run Phase 2 sweeps

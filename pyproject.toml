@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "retrieval-reputation-layer"
-version = "0.1.0"
+version = "0.2.1"
 description = "RRL — a lightweight retrieval reputation layer that folds verified downstream outcomes into ranking (per-document Beta reputation with staleness decay and sycophancy safeguards)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,13 +29,13 @@ classifiers = [
 # Core retrieval. Loose lower bounds for library consumers; requirements.txt
 # pins exact versions for reproducing the benchmark gates.
 dependencies = [
-    "sentence-transformers>=2.2",
     "numpy>=1.24",
-    "scipy>=1.10",
-    "scikit-learn>=1.2",
 ]
 
 [project.optional-dependencies]
+embeddings = [
+    "sentence-transformers>=2.2",
+]
 # FastAPI service (POST /retrieve, POST /feedback, GET /health)
 api = [
     "fastapi>=0.100",
@@ -46,15 +46,53 @@ api = [
 llm = [
     "google-genai>=1.0",
 ]
+# LangChain retriever adapter (rrl.integrations.langchain)
+langchain = [
+    "langchain-core>=0.3",
+]
+# LlamaIndex retriever adapter (rrl.integrations.llama_index)
+llamaindex = [
+    "llama-index-core>=0.11",
+]
 # Simulations, plots, and the test suite
 dev = [
     "matplotlib>=3.7",
     "pytest>=7.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "sentence-transformers>=2.2",
+    "scipy>=1.10",
+    "scikit-learn>=1.2",
 ]
+
 
 [project.urls]
 Homepage = "https://github.com/pras-ops/retrieval-reputation-layer"
 Repository = "https://github.com/pras-ops/retrieval-reputation-layer"
 
 [tool.setuptools]
-packages = ["rrl"]
+packages = ["rrl", "rrl.integrations"]
+
+
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "sentence_transformers.*",
+    "google.genai.*",
+    "langchain.*",
+    "langchain_core.*",
+    "llama_index.*",
+    "matplotlib.*",
+    "scipy.*",
+    "sklearn.*"
+]
+ignore_missing_imports = true
+

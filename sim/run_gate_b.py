@@ -9,17 +9,17 @@ import math
 import os
 import random
 import sys
-import time
-from typing import List, Dict, Tuple, Optional
+from typing import List, Tuple
 import matplotlib.pyplot as plt
 
 # Add parent directory to path so we can import rrl package
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from rrl.store import Candidate, CandidateStore
+from rrl.store import CandidateStore
 from rrl.ingest import Ingester
 from rrl.retriever import Retriever
 from rrl.feedback import OutcomeSignals, calculate_outcome, update_counters
+
 
 # Set up simple rule-based mock for generation to make it fast and avoid API costs/limits
 def generate_answer(query: str, contexts: List[str]) -> str:
@@ -30,7 +30,6 @@ def generate_answer(query: str, contexts: List[str]) -> str:
         return "The current CEO of the company is Alice Smith."
     else:
         return "I do not have enough information to answer."
-
 
 
 def verify_answer(step: int, answer: str) -> float:
@@ -63,6 +62,7 @@ def calculate_stats(data: List[float]) -> Tuple[float, float, float, float]:
     if n > 1:
         try:
             from scipy import stats as _st
+
             t_val = float(_st.t.ppf(0.975, n - 1))
         except Exception:
             t_val = 2.262 if n == 10 else (2.045 if n >= 30 else 1.96)
@@ -78,7 +78,7 @@ def run_simulation(seed: int, num_steps: int, gamma_val: float) -> Tuple[List[fl
     Returns (correctness_history, recall_history).
     """
     random.seed(seed)
-    
+
     # Ingest corpus chunks into store
     store = CandidateStore()
     ingester = Ingester()
@@ -97,7 +97,7 @@ def run_simulation(seed: int, num_steps: int, gamma_val: float) -> Tuple[List[fl
 
     correctness_history = []
     recall_history = []
-    
+
     query_text = "Who is the current CEO of the company?"
 
     for step in range(num_steps):
@@ -109,12 +109,12 @@ def run_simulation(seed: int, num_steps: int, gamma_val: float) -> Tuple[List[fl
             epsilon=0.0,  # Pure Thompson sampling exploration
             current_timestamp=float(step),
             gamma=gamma_val,
-            decay_unit_sec=1.0
+            decay_unit_sec=1.0,
         )
-        
+
         top_cand = res[0][0]
         active_target = "doc_ceo_alice" if step < 50 else "doc_ceo_bob"
-        is_correct_recall = (top_cand.id == active_target)
+        is_correct_recall = top_cand.id == active_target
         recall_history.append(1.0 if is_correct_recall else 0.0)
 
         # 2. Generate and Verify Answer
@@ -128,11 +128,11 @@ def run_simulation(seed: int, num_steps: int, gamma_val: float) -> Tuple[List[fl
             s_behave=0.75 if is_correct_ans > 0.5 else 0.10,
             s_gt=is_correct_ans,
             s_judge=1.0 if is_correct_ans > 0.5 else 0.0,
-            s_expl=1.0 if is_correct_ans > 0.5 else 0.0
+            s_expl=1.0 if is_correct_ans > 0.5 else 0.0,
         )
         y = calculate_outcome(signals, use_safeguards=True)
         retrieved_sims = {r[0].id: r[2] for r in res}
-        
+
         update_counters(
             store=store,
             retrieved_sims=retrieved_sims,
@@ -142,7 +142,7 @@ def run_simulation(seed: int, num_steps: int, gamma_val: float) -> Tuple[List[fl
             decay_unit_sec=1.0,
             credit_smoothing=0.50,
             use_liar_counter=True,
-            signals=signals
+            signals=signals,
         )
 
     return correctness_history, recall_history
@@ -166,7 +166,7 @@ def main():
     decay_on_overall_correctness = []
     decay_on_phase1_correctness = []
     decay_on_phase2_correctness = []
-    
+
     decay_off_overall_correctness = []
     decay_off_phase1_correctness = []
     decay_off_phase2_correctness = []
@@ -193,8 +193,10 @@ def main():
         decay_off_phase1_correctness.append(sum(c_off[:50]) / 50.0)
         decay_off_phase2_correctness.append(sum(c_off[50:]) / 50.0)
 
-        print(f"Seed {seed} finished. [Decay ON correctness: Phase1={sum(c_on[:50])/50:.2f}, Phase2={sum(c_on[50:])/50:.2f}] "
-              f"[Decay OFF correctness: Phase1={sum(c_off[:50])/50:.2f}, Phase2={sum(c_off[50:])/50:.2f}]")
+        print(
+            f"Seed {seed} finished. [Decay ON correctness: Phase1={sum(c_on[:50]) / 50:.2f}, Phase2={sum(c_on[50:]) / 50:.2f}] "
+            f"[Decay OFF correctness: Phase1={sum(c_off[:50]) / 50:.2f}, Phase2={sum(c_off[50:]) / 50:.2f}]"
+        )
 
     # Calculate statistics
     on_overall_stats = calculate_stats(decay_on_overall_correctness)
@@ -210,18 +212,25 @@ def main():
     print("=" * 115)
     print(f"{'Metric / Stage':<35} | {'Decay OFF (gamma=1.0)':<38} | {'Decay ON (gamma=0.90)':<38}")
     print("-" * 115)
-    print(f"{'Overall Answer Correctness':<35} | {off_overall_stats[0]:.3f}±{off_overall_stats[1]:.3f} [{off_overall_stats[2]:.3f}, {off_overall_stats[3]:.3f}] | {on_overall_stats[0]:.3f}±{on_overall_stats[1]:.3f} [{on_overall_stats[2]:.3f}, {on_overall_stats[3]:.3f}]")
-    print(f"{'Phase 1 Correctness (Alice, steps 0-50)':<35} | {off_phase1_stats[0]:.3f}±{off_phase1_stats[1]:.3f} [{off_phase1_stats[2]:.3f}, {off_phase1_stats[3]:.3f}] | {on_phase1_stats[0]:.3f}±{on_phase1_stats[1]:.3f} [{on_phase1_stats[2]:.3f}, {on_phase1_stats[3]:.3f}]")
-    print(f"{'Phase 2 Correctness (Bob, steps 50-100)':<35} | {off_phase2_stats[0]:.3f}±{off_phase2_stats[1]:.3f} [{off_phase2_stats[2]:.3f}, {off_phase2_stats[3]:.3f}] | {on_phase2_stats[0]:.3f}±{on_phase2_stats[1]:.3f} [{on_phase2_stats[2]:.3f}, {on_phase2_stats[3]:.3f}]")
+    print(
+        f"{'Overall Answer Correctness':<35} | {off_overall_stats[0]:.3f}±{off_overall_stats[1]:.3f} [{off_overall_stats[2]:.3f}, {off_overall_stats[3]:.3f}] | {on_overall_stats[0]:.3f}±{on_overall_stats[1]:.3f} [{on_overall_stats[2]:.3f}, {on_overall_stats[3]:.3f}]"
+    )
+    print(
+        f"{'Phase 1 Correctness (Alice, steps 0-50)':<35} | {off_phase1_stats[0]:.3f}±{off_phase1_stats[1]:.3f} [{off_phase1_stats[2]:.3f}, {off_phase1_stats[3]:.3f}] | {on_phase1_stats[0]:.3f}±{on_phase1_stats[1]:.3f} [{on_phase1_stats[2]:.3f}, {on_phase1_stats[3]:.3f}]"
+    )
+    print(
+        f"{'Phase 2 Correctness (Bob, steps 50-100)':<35} | {off_phase2_stats[0]:.3f}±{off_phase2_stats[1]:.3f} [{off_phase2_stats[2]:.3f}, {off_phase2_stats[3]:.3f}] | {on_phase2_stats[0]:.3f}±{on_phase2_stats[1]:.3f} [{on_phase2_stats[2]:.3f}, {on_phase2_stats[3]:.3f}]"
+    )
     print("=" * 115)
 
     # 4. Generate Plot (Rolling Average curves for both configurations)
     try:
+
         def moving_average(data: List[float], window_size: int = 5) -> List[float]:
             ret = []
             for i in range(len(data)):
                 start = max(0, i - window_size + 1)
-                window = data[start:i+1]
+                window = data[start : i + 1]
                 ret.append(sum(window) / len(window))
             return ret
 
@@ -229,18 +238,35 @@ def main():
         # Plot Phase lines
         plt.axvline(x=50, color="#4b5563", linestyle=":", linewidth=2)
         plt.text(51, 0.95, "CEO Shifts to Bob", color="#4b5563", fontsize=10, fontweight="bold")
-        
-        plt.plot(moving_average(decay_off_step_correctness), label="Decay OFF (gamma=1.0)", color="#dc2626", linewidth=2.5, linestyle="--")
-        plt.plot(moving_average(decay_on_step_correctness), label="Decay ON (gamma=0.90)", color="#2563eb", linewidth=3.0)
-        
-        plt.title("Gate B: Answer Correctness Learning Curve Comparison\n(30-Seed Average - 5-Step Moving Average)", fontsize=12, fontweight="bold")
+
+        plt.plot(
+            moving_average(decay_off_step_correctness),
+            label="Decay OFF (gamma=1.0)",
+            color="#dc2626",
+            linewidth=2.5,
+            linestyle="--",
+        )
+        plt.plot(
+            moving_average(decay_on_step_correctness),
+            label="Decay ON (gamma=0.90)",
+            color="#2563eb",
+            linewidth=3.0,
+        )
+
+        plt.title(
+            "Gate B: Answer Correctness Learning Curve Comparison\n(30-Seed Average - 5-Step Moving Average)",
+            fontsize=12,
+            fontweight="bold",
+        )
         plt.xlabel("Query Step", fontsize=10)
         plt.ylabel("Answer Correctness", fontsize=10)
         plt.ylim(-0.05, 1.05)
         plt.grid(True, linestyle=":", alpha=0.6)
         plt.legend(loc="lower left")
-        
-        plot_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "gate_b_comparison.png"))
+
+        plot_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "gate_b_comparison.png")
+        )
         plt.savefig(plot_path, dpi=300)
         plt.close()
         print(f"\n[Success] Saved comparison plots to: {plot_path}")

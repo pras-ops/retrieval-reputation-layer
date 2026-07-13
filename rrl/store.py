@@ -5,7 +5,15 @@ Defines the Candidate dataclass with its Beta distribution counters and the Cand
 
 from dataclasses import dataclass, field
 import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
+import time
+
+
+def _decay(value: float, gamma: float, dt_units: float) -> float:
+    """Beta-counter decay toward the prior of 1.0:  x <- 1 + (x-1) * gamma^dt."""
+    if gamma >= 1.0 or dt_units <= 0:
+        return value
+    return 1.0 + (value - 1.0) * (gamma**dt_units)
 
 
 @dataclass
@@ -13,26 +21,28 @@ class Candidate:
     id: str
     content: str
     metadata: dict = field(default_factory=dict)
-    
+
     # Short-term / Recent Usefulness Counters
     alpha: float = 1.0
     beta: float = 1.0
-    
+
     # Permanent Usefulness Counters
     A: float = 1.0
     B: float = 1.0
-    
+
     # Robustness & Denoising Fields
     fooled: float = 0.0
     verified: float = 0.0
     recent_outcomes: List[float] = field(default_factory=list)
-    
+
     # Query-conditional counters (cluster_id -> dict of counters)
     cluster_counters: Dict[str, dict] = field(default_factory=dict)
-    
+
     # Timestamp tracking for recency-based decay and updates
     last_confirmed: float = 0.0
-    last_updated: float = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).timestamp())
+    last_updated: float = field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).timestamp()
+    )
 
     def __post_init__(self):
         if not self.last_confirmed:
@@ -85,13 +95,16 @@ class Candidate:
             recent_outcomes=data.get("recent_outcomes", []),
             cluster_counters=data.get("cluster_counters", {}),
             last_confirmed=data.get("last_confirmed", 0.0),
-            last_updated=data.get("last_updated", datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            last_updated=data.get(
+                "last_updated", datetime.datetime.now(datetime.timezone.utc).timestamp()
+            ),
         )
 
 
 class CandidateStore:
     def __init__(self):
         self.candidates: Dict[str, Candidate] = {}
+        self.pending: Dict[str, Tuple[Dict[str, float], Optional[str], float]] = {}
 
     def add_candidate(self, candidate: Candidate) -> None:
         self.candidates[candidate.id] = candidate
@@ -102,9 +115,35 @@ class CandidateStore:
     def list_candidates(self, now: Optional[float] = None) -> List[Candidate]:
         return list(self.candidates.values())
 
-
     def update_candidate(self, candidate: Candidate) -> None:
         if candidate.id in self.candidates:
             self.candidates[candidate.id] = candidate
         else:
             raise KeyError(f"Candidate with ID {candidate.id} not found in store.")
+
+    def save_pending(
+        self,
+        response_id: str,
+        shares: Dict[str, float],
+        cluster_id: Optional[str] = None,
+        now: Optional[float] = None,
+    ) -> None:
+        if now is None:
+            now = time.time()
+        self.pending[response_id] = (shares, cluster_id, now)
+
+    def pop_pending(self, response_id: str) -> Optional[Tuple[Dict[str, float], Optional[str]]]:
+        if response_id in self.pending:
+            shares, cluster_id, _ = self.pending.pop(response_id)
+            return shares, cluster_id
+        return None
+
+    def gc_pending(self, max_age_sec: float, now: Optional[float] = None) -> int:
+        if now is None:
+            now = time.time()
+        expired = [
+            rid for rid, (_, _, created) in self.pending.items() if created < now - max_age_sec
+        ]
+        for rid in expired:
+            self.pending.pop(rid)
+        return len(expired)

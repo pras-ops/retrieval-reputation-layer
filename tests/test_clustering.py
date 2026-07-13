@@ -46,7 +46,7 @@ class TestQueryClustering(unittest.TestCase):
         new_clusterer = QueryClusterer()
         new_clusterer.load(store)
         self.assertEqual(len(new_clusterer.centroids), 2)
-        
+
         # Test assign vector close to cluster 1
         c = new_clusterer.assign([0.05, 0.95, 0.0])
         self.assertEqual(c, "cluster_1")

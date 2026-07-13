@@ -47,7 +47,7 @@ class TestFeedbackMath(unittest.TestCase):
 
         signals_success = OutcomeSignals(
             s_behave=0.10,  # terrible behavior
-            s_gt=1.0,       # but verifier passed
+            s_gt=1.0,  # but verifier passed
             s_judge=0.20,
         )
         outcome_success = calculate_outcome(signals_success)
@@ -60,8 +60,8 @@ class TestFeedbackMath(unittest.TestCase):
         signals = OutcomeSignals(
             s_behave=0.75,  # 0.45 * 0.75 = 0.3375
             s_gt=None,
-            s_judge=0.50,   # 0.15 * 0.50 = 0.0750
-            s_expl=1.0,     # 0.10 * 1.0  = 0.1000
+            s_judge=0.50,  # 0.15 * 0.50 = 0.0750
+            s_expl=1.0,  # 0.10 * 1.0  = 0.1000
         )
         outcome = calculate_outcome(signals)
         expected = (0.3375 + 0.0750 + 0.1000) / 0.70
@@ -137,7 +137,7 @@ class TestFeedbackMath(unittest.TestCase):
             current_timestamp=100.0,  # dt = 0
             gamma=0.98,
             decay_unit_sec=86400.0,
-            credit_smoothing=credit_smoothing
+            credit_smoothing=credit_smoothing,
         )
 
         c1_updated = self.store.get_candidate("c1")
@@ -178,8 +178,8 @@ class TestFeedbackMath(unittest.TestCase):
         gamma = 0.90
         decay_unit_sec = 86400.0
         current_time = 100.0 + decay_unit_sec  # dt = 86400.0
-        
-        # We retrieve only c2 with sim = 1.0. 
+
+        # We retrieve only c2 with sim = 1.0.
         # Since only c2 retrieved, smoothed sim = 1.0 + 0.0 = 1.0 -> r(c2) = 1.0
         retrieved_sims = {"c2": 1.0}
         y = 0.5  # Neutral outcome -> y = 0.5 -> kappa = 0.0 (no update, decay only!)
@@ -191,7 +191,7 @@ class TestFeedbackMath(unittest.TestCase):
             current_timestamp=current_time,
             gamma=gamma,
             decay_unit_sec=decay_unit_sec,
-            credit_smoothing=0.0  # no smoothing for this test to keep it pure
+            credit_smoothing=0.0,  # no smoothing for this test to keep it pure
         )
 
         c2_updated = self.store.get_candidate("c2")
@@ -209,14 +209,14 @@ class TestFeedbackMath(unittest.TestCase):
     def test_decay_on_read(self):
         """Verifies that Retriever.retrieve decays alpha/beta on-the-fly during read."""
         from rrl.retriever import Retriever
-        
+
         # c2 initial state: alpha=2.0, beta=3.0, last_updated=100.0
         # Decay over 2 decay units with gamma = 0.90
         # Expected:
         # alpha = 1.0 + (2.0 - 1.0) * 0.90^2 = 1.0 + 1.0 * 0.81 = 1.81
         # beta = 1.0 + (3.0 - 1.0) * 0.90^2 = 1.0 + 2.0 * 0.81 = 2.62
         retriever = Retriever(self.store, weights=(1.0, 0.0, 0.0, 0.0))
-        
+
         # We query and check the decayed candidate object
         current_time = 100.0 + 2.0 * 86400.0
         res = retriever.retrieve(
@@ -225,12 +225,12 @@ class TestFeedbackMath(unittest.TestCase):
             explore=False,
             current_timestamp=current_time,
             gamma=0.90,
-            decay_unit_sec=86400.0
+            decay_unit_sec=86400.0,
         )
-        
+
         self.assertEqual(len(res), 1)
         decayed_candidate = res[0][0]
-        
+
         self.assertEqual(decayed_candidate.id, "c2")
         self.assertAlmostEqual(decayed_candidate.alpha, 1.81)
         self.assertAlmostEqual(decayed_candidate.beta, 2.62)
@@ -246,7 +246,7 @@ class TestFeedbackMath(unittest.TestCase):
             y=y,
             current_timestamp=100.0,
             gamma=1.0,
-            cluster_id="cluster_test"
+            cluster_id="cluster_test",
         )
         c1 = self.store.get_candidate("c1")
         # Global should increase (initial alpha=1.0)
@@ -257,8 +257,17 @@ class TestFeedbackMath(unittest.TestCase):
 
     def test_recency_decay_preserves_active_doc(self):
         """Verifies that documents confirmed frequently hold their reputation, while idle ones decay."""
-        c1 = Candidate(id="c_active", content="active", alpha=5.0, beta=1.0, last_confirmed=0.0, last_updated=0.0)
-        c2 = Candidate(id="c_idle", content="idle", alpha=5.0, beta=1.0, last_confirmed=0.0, last_updated=0.0)
+        c1 = Candidate(
+            id="c_active",
+            content="active",
+            alpha=5.0,
+            beta=1.0,
+            last_confirmed=0.0,
+            last_updated=0.0,
+        )
+        c2 = Candidate(
+            id="c_idle", content="idle", alpha=5.0, beta=1.0, last_confirmed=0.0, last_updated=0.0
+        )
         self.store.add_candidate(c1)
         self.store.add_candidate(c2)
 
@@ -270,13 +279,21 @@ class TestFeedbackMath(unittest.TestCase):
                 y=1.0,
                 current_timestamp=float(t),
                 gamma=0.5,
-                decay_unit_sec=1.0
+                decay_unit_sec=1.0,
             )
 
         from rrl.retriever import Retriever
+
         retriever = Retriever(self.store, weights=(1.0, 0.0, 0.0, 0.0))
-        res = retriever.retrieve({"c_active": 1.0, "c_idle": 1.0}, top_k=2, explore=False, current_timestamp=10.0, gamma=0.5, decay_unit_sec=1.0)
-        
+        res = retriever.retrieve(
+            {"c_active": 1.0, "c_idle": 1.0},
+            top_k=2,
+            explore=False,
+            current_timestamp=10.0,
+            gamma=0.5,
+            decay_unit_sec=1.0,
+        )
+
         c_active_dec = next(c for c, _, _ in res if c.id == "c_active")
         c_idle_dec = next(c for c, _, _ in res if c.id == "c_idle")
 
@@ -287,11 +304,7 @@ class TestFeedbackMath(unittest.TestCase):
         """Verifies that an ambiguous outcome (y ≈ 0.5) barely moves counters."""
         y = 0.51
         update_counters(
-            store=self.store,
-            retrieved_sims={"c1": 1.0},
-            y=y,
-            current_timestamp=100.0,
-            gamma=1.0
+            store=self.store, retrieved_sims={"c1": 1.0}, y=y, current_timestamp=100.0, gamma=1.0
         )
         c1 = self.store.get_candidate("c1")
         self.assertLess(c1.alpha, 1.02)
@@ -299,4 +312,3 @@ class TestFeedbackMath(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

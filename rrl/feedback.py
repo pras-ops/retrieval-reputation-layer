@@ -4,18 +4,21 @@ Implements the feedback aggregation outcome (y) and the soft,
 confidence-weighted update step (κ) with exponential decay (γ).
 """
 
-import datetime
 from dataclasses import dataclass
 from typing import Dict, Optional
-from .store import CandidateStore
+from .store import CandidateStore, _decay
 
 
 @dataclass
 class OutcomeSignals:
-    s_behave: Optional[float] = None  # keep/copy capped ~0.75, minor edit ≈ 0.5, regen/rephrase/discard ≈ 0.1
-    s_gt: Optional[float] = None      # verifier where it exists (tests pass, DB match) - overrides all if present
-    s_judge: Optional[float] = None   # cheap judge faithfulness-focused
-    s_expl: Optional[float] = None    # thumbs up / down (1.0 / 0.0)
+    s_behave: Optional[float] = (
+        None  # keep/copy capped ~0.75, minor edit ≈ 0.5, regen/rephrase/discard ≈ 0.1
+    )
+    s_gt: Optional[float] = (
+        None  # verifier where it exists (tests pass, DB match) - overrides all if present
+    )
+    s_judge: Optional[float] = None  # cheap judge faithfulness-focused
+    s_expl: Optional[float] = None  # thumbs up / down (1.0 / 0.0)
 
 
 def calculate_outcome(
@@ -56,13 +59,13 @@ def calculate_outcome(
             # Scale user-controlled signals by trust score
             if attr in ("s_behave", "s_expl"):
                 val = val * trust_score
-            
+
             # Apply asymmetry safeguard for s_behave if enabled
             if attr == "s_behave" and cap_behave:
                 # Capping positive signals (e.g. keep/copy > 0.5) to 0.75, keeping regens sharp at 0.10
                 if val > 0.5:
                     val = min(val, 0.75)
-            
+
             # Ensure signal values are clipped to [0, 1]
             val = max(0.0, min(1.0, val))
             total_weighted_sum += weight * val
@@ -80,7 +83,7 @@ def calculate_robust_estimate(candidate, mode: str = "beta") -> float:
     Supports median, trimmed (drops top 30%), mom (median of means), and beta (prior expectation) fallback.
     """
     outcomes = getattr(candidate, "recent_outcomes", [])
-    
+
     # Prior expectation fallback if under 10 outcomes
     if len(outcomes) < 10:
         return candidate.alpha / (candidate.alpha + candidate.beta)
@@ -110,7 +113,7 @@ def calculate_robust_estimate(candidate, mode: str = "beta") -> float:
         block_size = max(1, n // k)
         means = []
         for i in range(0, n, block_size):
-            block = outcomes[i:i + block_size]
+            block = outcomes[i : i + block_size]
             if block:
                 means.append(sum(block) / len(block))
         if not means:
@@ -133,7 +136,7 @@ def update_counters(
     current_timestamp: Optional[float] = None,
     gamma: float = 0.98,
     decay_unit_sec: float = 86400.0,  # 1 day default
-    credit_smoothing: float = 0.10,   # Add smoothing to avoid exploration starvation
+    credit_smoothing: float = 0.10,  # Add smoothing to avoid exploration starvation
     use_liar_counter: bool = True,
     use_adt_denoising: bool = False,
     robust_estimator_mode: str = "beta",
@@ -194,6 +197,7 @@ def update_counters_from_shares(
 
     if current_timestamp is None:
         import time
+
         current_timestamp = time.time()
 
     # Calculate κ (decisiveness factor, in [0, 1])
@@ -207,12 +211,14 @@ def update_counters_from_shares(
 
         d_fooled = 0.0
         d_verified = 0.0
-        
+
         # 1. Update liar counter if enabled and verifier signal is present
         if use_liar_counter and signals is not None and signals.s_gt is not None:
             d_verified = 1.0
-            user_accepted = (signals.s_behave is not None and signals.s_behave > 0.5) or (signals.s_expl is not None and signals.s_expl == 1.0)
-            verifier_failed = (signals.s_gt < 0.5)
+            user_accepted = (signals.s_behave is not None and signals.s_behave > 0.5) or (
+                signals.s_expl is not None and signals.s_expl == 1.0
+            )
+            verifier_failed = signals.s_gt < 0.5
             if user_accepted and verifier_failed:
                 d_fooled = 1.0
 
@@ -223,9 +229,10 @@ def update_counters_from_shares(
         kappa_eff = kappa
         if use_adt_denoising:
             import math
+
             c_robust_val = calculate_robust_estimate(candidate, robust_estimator_mode)
             loss = abs(y_credited - c_robust_val)
-            kappa_eff = kappa * math.exp(-(loss ** 2) / 0.32)
+            kappa_eff = kappa * math.exp(-(loss**2) / 0.32)
 
         d_alpha = kappa_eff * share_val * y
         d_beta = kappa_eff * share_val * (1.0 - y)
@@ -244,7 +251,7 @@ def update_counters_from_shares(
                 d_verified=d_verified,
                 recent_outcome=y_credited,
                 cluster_id=cluster_id,
-                now=current_timestamp
+                now=current_timestamp,
             )
         else:
             # In-memory CandidateStore updates
@@ -253,10 +260,9 @@ def update_counters_from_shares(
             dt = current_timestamp - last_confirmed
             if dt > 0 and decay_unit_sec > 0:
                 days = dt / decay_unit_sec
-                decay_factor = gamma ** days
-                candidate.alpha = 1.0 + (candidate.alpha - 1.0) * decay_factor
-                candidate.beta = 1.0 + (candidate.beta - 1.0) * decay_factor
-            
+                candidate.alpha = _decay(candidate.alpha, gamma, days)
+                candidate.beta = _decay(candidate.beta, gamma, days)
+
             # Apply updates
             candidate.alpha += d_alpha
             candidate.beta += d_beta
@@ -288,9 +294,8 @@ def update_counters_from_shares(
                 cc_dt = current_timestamp - cc_lc
                 if cc_dt > 0 and decay_unit_sec > 0:
                     cc_days = cc_dt / decay_unit_sec
-                    cc_decay_factor = gamma ** cc_days
-                    cc["alpha"] = 1.0 + (cc.get("alpha", 1.0) - 1.0) * cc_decay_factor
-                    cc["beta"] = 1.0 + (cc.get("beta", 1.0) - 1.0) * cc_decay_factor
+                    cc["alpha"] = _decay(cc.get("alpha", 1.0), gamma, cc_days)
+                    cc["beta"] = _decay(cc.get("beta", 1.0), gamma, cc_days)
 
                 cc["alpha"] = cc.get("alpha", 1.0) + d_alpha
                 cc["beta"] = cc.get("beta", 1.0) + d_beta
@@ -335,6 +340,7 @@ def update_counters_with_signals(
 
     if current_timestamp is None:
         import time
+
         current_timestamp = time.time()
 
     for cid, share_val in shares.items():
@@ -360,8 +366,10 @@ def update_counters_with_signals(
         d_verified = 0.0
         if use_liar_counter and signals.s_gt is not None:
             d_verified = 1.0
-            user_accepted = (signals.s_behave is not None and signals.s_behave > 0.5) or (signals.s_expl is not None and signals.s_expl == 1.0)
-            verifier_failed = (signals.s_gt < 0.5)
+            user_accepted = (signals.s_behave is not None and signals.s_behave > 0.5) or (
+                signals.s_expl is not None and signals.s_expl == 1.0
+            )
+            verifier_failed = signals.s_gt < 0.5
             if user_accepted and verifier_failed:
                 d_fooled = 1.0
 
@@ -372,9 +380,10 @@ def update_counters_with_signals(
         kappa_eff = kappa
         if use_adt_denoising:
             import math
+
             c_robust_val = calculate_robust_estimate(candidate, robust_estimator_mode)
             loss = abs(y_credited - c_robust_val)
-            kappa_eff = kappa * math.exp(-(loss ** 2) / 0.32)
+            kappa_eff = kappa * math.exp(-(loss**2) / 0.32)
 
         d_alpha = kappa_eff * share_val * y
         d_beta = kappa_eff * share_val * (1.0 - y)
@@ -393,7 +402,7 @@ def update_counters_with_signals(
                 d_verified=d_verified,
                 recent_outcome=y_credited,
                 cluster_id=cluster_id,
-                now=current_timestamp
+                now=current_timestamp,
             )
         else:
             # Decay short term counters first
@@ -401,10 +410,9 @@ def update_counters_with_signals(
             dt = current_timestamp - last_confirmed
             if dt > 0 and decay_unit_sec > 0:
                 days = dt / decay_unit_sec
-                decay_factor = gamma ** days
-                candidate.alpha = 1.0 + (candidate.alpha - 1.0) * decay_factor
-                candidate.beta = 1.0 + (candidate.beta - 1.0) * decay_factor
-            
+                candidate.alpha = _decay(candidate.alpha, gamma, days)
+                candidate.beta = _decay(candidate.beta, gamma, days)
+
             candidate.alpha += d_alpha
             candidate.beta += d_beta
             candidate.A += d_A
@@ -435,9 +443,8 @@ def update_counters_with_signals(
                 cc_dt = current_timestamp - cc_lc
                 if cc_dt > 0 and decay_unit_sec > 0:
                     cc_days = cc_dt / decay_unit_sec
-                    cc_decay_factor = gamma ** cc_days
-                    cc["alpha"] = 1.0 + (cc.get("alpha", 1.0) - 1.0) * cc_decay_factor
-                    cc["beta"] = 1.0 + (cc.get("beta", 1.0) - 1.0) * cc_decay_factor
+                    cc["alpha"] = _decay(cc.get("alpha", 1.0), gamma, cc_days)
+                    cc["beta"] = _decay(cc.get("beta", 1.0), gamma, cc_days)
 
                 cc["alpha"] = cc.get("alpha", 1.0) + d_alpha
                 cc["beta"] = cc.get("beta", 1.0) + d_beta
@@ -458,3 +465,21 @@ def update_counters_with_signals(
                 candidate.last_confirmed = current_timestamp
             candidate.last_updated = current_timestamp
             store.update_candidate(candidate)
+
+
+def compute_credit_shares(sims: Dict[str, float], smoothing: float = 0.10) -> Dict[str, float]:
+    """
+    Computes credit shares r(i) from a dictionary of similarity scores with smoothing.
+    """
+    if not sims:
+        return {}
+    total_smoothed_sim = sum(sim + smoothing for sim in sims.values())
+    shares = {}
+    if total_smoothed_sim > 0.0:
+        for cid, sim in sims.items():
+            shares[cid] = (sim + smoothing) / total_smoothed_sim
+    else:
+        share = 1.0 / len(sims)
+        for cid in sims:
+            shares[cid] = share
+    return shares

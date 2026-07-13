@@ -13,7 +13,7 @@ approach and is fine for a local demo, but production should sandbox in a contai
 import json
 import subprocess
 import sys
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 
 def load_humaneval(path: str = "data/HumanEval.jsonl", limit: Optional[int] = None) -> List[dict]:
@@ -32,8 +32,11 @@ def run_tests(problem: dict, completion: str, timeout: float = 10.0) -> float:
     Returns 1.0 if the process exits 0 (all asserts passed), else 0.0.
     """
     program = (
-        problem["prompt"] + completion + "\n"
-        + problem["test"] + "\n"
+        problem["prompt"]
+        + completion
+        + "\n"
+        + problem["test"]
+        + "\n"
         + f"check({problem['entry_point']})\n"
     )
     try:
@@ -62,5 +65,7 @@ if __name__ == "__main__":
         failed_broken += int(broken == 0.0)
         print(f"  {p['task_id']:<14} entry={p['entry_point']:<22} canonical={ok}  broken={broken}")
     n = len(probs)
-    print(f"\ncanonical passed: {passed_canonical}/{n}   broken correctly failed: {failed_broken}/{n}")
+    print(
+        f"\ncanonical passed: {passed_canonical}/{n}   broken correctly failed: {failed_broken}/{n}"
+    )
     print("VERIFIER OK" if (passed_canonical == n and failed_broken == n) else "VERIFIER PROBLEM")
