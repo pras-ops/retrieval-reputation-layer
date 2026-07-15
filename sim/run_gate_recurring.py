@@ -213,7 +213,7 @@ CACHE_PATH = os.path.abspath(
 )
 
 
-def load_cache():
+def load_cache(expected_generator: str):
     global GLOBAL_CACHE
     GLOBAL_CACHE = {}
     if os.path.exists(CACHE_PATH):
@@ -222,6 +222,8 @@ def load_cache():
                 if line.strip():
                     try:
                         data = json.loads(line)
+                        if data.get("generator") != expected_generator:
+                            continue
                         k = f"{data['task_id']}_{data['retrieved_id']}"
                         GLOBAL_CACHE[k] = data
                     except Exception:
@@ -229,7 +231,12 @@ def load_cache():
 
 
 def save_to_cache(
-    task_id: int, retrieved_id: str, retrieved_content: str, completion: str, passed: float
+    task_id: int,
+    retrieved_id: str,
+    retrieved_content: str,
+    completion: str,
+    passed: float,
+    generator: str,
 ):
     k = f"{task_id}_{retrieved_id}"
     data = {
@@ -238,6 +245,7 @@ def save_to_cache(
         "retrieved_content": retrieved_content,
         "completion": completion,
         "passed": passed,
+        "generator": generator,
     }
     GLOBAL_CACHE[k] = data
     os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
@@ -305,7 +313,10 @@ def run_arm(
             state = random.getstate()
             completion = generate(problem, top.content, use_real)
             passed = run_tests(problem, completion)
-            save_to_cache(problem["task_id"], top.id, top.content, completion, passed)
+            generator_name = "gemini-2.5-flash" if use_real else "mock"
+            save_to_cache(
+                problem["task_id"], top.id, top.content, completion, passed, generator_name
+            )
             random.setstate(state)
 
         history.append(passed)
@@ -360,13 +371,17 @@ def main():
     )
     ap.add_argument("--seeds", type=int, default=5)
     ap.add_argument("--epochs", type=int, default=8)
+    ap.add_argument(
+        "--out", type=str, default="sim/results/gate_r.json", help="path to save JSON results"
+    )
     args = ap.parse_args()
 
     if args.selftest:
         selftest()
         return
 
-    load_cache()
+    expected_generator = "mock" if args.mock else "gemini-2.5-flash"
+    load_cache(expected_generator)
 
     use_real = os.getenv("USE_REAL_GEMINI", "false").lower() == "true"
     if not use_real and not args.mock and not args.replay:
@@ -385,6 +400,11 @@ def main():
 
         cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
     except Exception as e:
+        if not args.mock and not args.selftest:
+            sys.exit(
+                f"ERROR: sentence-transformers is required for real/replay runs to evaluate the static baseline "
+                f"({e}). Please install the dependencies and ensure you are using the correct Python environment."
+            )
         print(f"[warn] cross-encoder unavailable ({e}); static baseline falls back to RRF top-1.")
 
     seeds = list(range(42, 42 + args.seeds))
@@ -393,6 +413,8 @@ def main():
     total_steps = args.epochs * 30  # n_query is 30
     static_step_correctness = [0.0] * total_steps
     cag_step_correctness = [0.0] * total_steps
+    all_static_curves = []
+    all_cag_curves = []
 
     for s in seeds:
         sh = run_arm(
@@ -418,9 +440,38 @@ def main():
         cag_late.append(sum(ch[-k:]) / k)
         print(f"seed {s}: static={static_overall[-1]:.3f}  rrl={cag_overall[-1]:.3f}")
 
+        all_static_curves.append(sh)
+        all_cag_curves.append(ch)
+
         for step in range(min(total_steps, len(sh), len(ch))):
             static_step_correctness[step] += sh[step] / len(seeds)
             cag_step_correctness[step] += ch[step] / len(seeds)
+
+    if args.out:
+        os.makedirs(os.path.dirname(args.out), exist_ok=True)
+        with open(args.out, "w") as f:
+            mode_str = "mock" if args.mock else ("replay" if args.replay else "real")
+            json.dump(
+                {
+                    "config": {
+                        "seeds": seeds,
+                        "epochs": args.epochs,
+                        "model": "gemini-2.5-flash",
+                        "weights": [0.20, 0.40, 0.10, 0.30],
+                        "gamma": 0.95,
+                        "replay": args.replay,
+                        "mode": mode_str,
+                    },
+                    "static_overall": static_overall,
+                    "rrl_overall": cag_overall,
+                    "static_late": static_late,
+                    "rrl_late": cag_late,
+                    "static_curve": static_step_correctness,
+                    "rrl_curve": cag_step_correctness,
+                },
+                f,
+                indent=2,
+            )
 
     so, co = stats(static_overall), stats(cag_overall)
     sl, cl = stats(static_late), stats(cag_late)
@@ -439,6 +490,18 @@ def main():
     print("=" * 90)
     print("Verdict: CI-separated => recurrence win is real; overlapping => not significant.")
 
+    # Paired t-test
+    try:
+        from scipy import stats as st
+
+        diffs = [c - s for c, s in zip(cag_late, static_late)]
+        t, p = st.ttest_rel(cag_late, static_late)
+        print(
+            f"Paired t-test (late-stage, n={len(diffs)}): mean diff={sum(diffs) / len(diffs):+.3f}, t={t:.2f}, p={p:.4f}"
+        )
+    except Exception as e:
+        print(f"[Warning] Paired t-test skipped: scipy not available or error occurred ({e})")
+
     # Generate Learning Curve Plot
     try:
         import matplotlib.pyplot as plt
@@ -451,23 +514,78 @@ def main():
                 ret.append(sum(window) / len(window))
             return ret
 
+        def mean_and_ci(curves: List[List[float]], step: int) -> Tuple[float, float]:
+            vals = [c[step] for c in curves if step < len(c)]
+            n = len(vals)
+            if n == 0:
+                return 0.0, 0.0
+            mean = sum(vals) / n
+            if n <= 1:
+                return mean, 0.0
+            var = sum((x - mean) ** 2 for x in vals) / (n - 1)
+            sem = math.sqrt(var) / math.sqrt(n)
+            try:
+                from scipy import stats as _st
+
+                t_val = float(_st.t.ppf(0.975, n - 1))
+            except Exception:
+                if n == 5:
+                    t_val = 2.776
+                elif n == 10:
+                    t_val = 2.262
+                else:
+                    t_val = 1.96 + 2.0 / n
+            return mean, t_val * sem
+
+        static_smoothed = [moving_average(c) for c in all_static_curves]
+        cag_smoothed = [moving_average(c) for c in all_cag_curves]
+
+        static_means, static_cis = [], []
+        cag_means, cag_cis = [], []
+        for step in range(total_steps):
+            s_mean, s_ci = mean_and_ci(static_smoothed, step)
+            c_mean, c_ci = mean_and_ci(cag_smoothed, step)
+            static_means.append(s_mean)
+            static_cis.append(s_ci)
+            cag_means.append(c_mean)
+            cag_cis.append(c_ci)
+
         plt.figure(figsize=(10, 6))
+        steps = range(total_steps)
+
         plt.plot(
-            moving_average(static_step_correctness),
+            steps,
+            static_means,
             label="Static Baseline (Cross-Encoder Reranked)",
             color="#dc2626",
             linewidth=2.5,
             linestyle="--",
         )
+        plt.fill_between(
+            steps,
+            [m - ci for m, ci in zip(static_means, static_cis)],
+            [m + ci for m, ci in zip(static_means, static_cis)],
+            color="#dc2626",
+            alpha=0.15,
+        )
+
         plt.plot(
-            moving_average(cag_step_correctness),
+            steps,
+            cag_means,
             label="RRL Feedback Loop (Thompson Sampling)",
             color="#2563eb",
             linewidth=3.0,
         )
+        plt.fill_between(
+            steps,
+            [m - ci for m, ci in zip(cag_means, cag_cis)],
+            [m + ci for m, ci in zip(cag_means, cag_cis)],
+            color="#2563eb",
+            alpha=0.15,
+        )
 
         plt.title(
-            "Gate Recurring (MBPP): Unit Test Pass Rate Learning Curve\n(Average across seeds - Moving Average)",
+            "Gate Recurring (MBPP): Unit Test Pass Rate Learning Curve\n(Average across seeds with 95% Confidence Interval - Moving Average)",
             fontsize=12,
             fontweight="bold",
         )

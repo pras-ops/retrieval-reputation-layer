@@ -1,11 +1,8 @@
 # Related Work & Positioning
 
 RRL sits at the intersection of two active (2024–2026) research areas and one older
-statistical lineage. This document states where it fits, how it differs, and — honestly —
-where it has *not* yet been compared.
-
-> **Note:** citations below are for orientation. Verify exact venues/IDs against the source
-> before any formal submission; a few are cited by name where the identifier was not confirmed.
+statistical lineage. This document states where it fits, how it differs, and where it has
+*not* yet been compared.
 
 ---
 
@@ -19,12 +16,12 @@ same high-level goal as RRL.
   interaction encodes *whether the task succeeded and which strategies worked*. Their **ReMem**
   framework adds a think–act–memory-refine loop. This is essentially RRL's
   recurrence-with-a-verifier regime, standardized.
-- **ExpeL** (Zhao et al., AAAI 2024) — collects trajectories, abstracts insights, retrieves
+- **ExpeL** (Zhao et al., AAAI 2024, [arXiv:2308.10144](https://arxiv.org/abs/2308.10144)) — collects trajectories, abstracts insights, retrieves
   successful past experiences at test time.
-- **Agent Workflow Memory** (Wang et al., 2024) — induces reusable *workflows* from past
+- **Agent Workflow Memory** (Wang et al., ICML 2025, [arXiv:2409.07429](https://arxiv.org/abs/2409.07429)) — induces reusable *workflows* from past
   trajectories and injects them into context.
-- **Dynamic Cheatsheet** (2025) — adaptive memory of reusable strategies/insights.
-- **Agentic Context Engineering** ([arXiv:2510.04618](https://arxiv.org/pdf/2510.04618)) — evolves
+- **Dynamic Cheatsheet** (Suzgun et al., 2025, [arXiv:2504.07952](https://arxiv.org/abs/2504.07952)) — adaptive memory of reusable strategies/insights.
+- **Agentic Context Engineering** (ACE, [arXiv:2510.04618](https://arxiv.org/abs/2510.04618)) — evolves
   the context itself for self-improvement.
 
 **How RRL differs.** All of the above operate at the **prompt-construction level**: they
@@ -41,12 +38,13 @@ way ExpRAG / AWM / Dynamic Cheatsheet do.
 
 RRL's update loop is online learning-to-rank with bandit feedback, applied to RAG.
 
-- **DynamicRAG** ([arXiv:2505.07233](https://arxiv.org/pdf/2505.07233)) — RL-optimizes a reranker
+- **DynamicRAG** ([arXiv:2505.07233](https://arxiv.org/abs/2505.07233)) — RL-optimizes a reranker
   from LLM-output feedback.
-- **AutoRAG-HP** — frames RAG knobs as hierarchical bandits tuned from live feedback.
-- **LTRR: Learning to Rank Retrievers for LLMs** ([arXiv:2506.13743](https://arxiv.org/pdf/2506.13743)).
-- **Online-Optimized RAG for tool use / function calling** ([arXiv:2509.20415](https://arxiv.org/pdf/2509.20415)).
-- **REARANK** — reranking as an RL reasoning agent; **RankArena** — eval platform with
+- **AutoRAG-HP** (Fu et al., EMNLP Findings 2024, [arXiv:2406.19251](https://arxiv.org/abs/2406.19251)) — frames RAG knobs as hierarchical bandits tuned from live feedback.
+- **LTRR: Learning to Rank Retrievers for LLMs** (Kim & Diaz, SIGIR 2025 LiveRAG, [arXiv:2506.13743](https://arxiv.org/abs/2506.13743)).
+- **Online-Optimized RAG for tool use / function calling** ([arXiv:2509.20415](https://arxiv.org/abs/2509.20415)).
+- **REARANK** (EMNLP 2025, [arXiv:2505.20046](https://arxiv.org/abs/2505.20046)) — reranking as an RL reasoning agent.
+- **RankArena** (CIKM 2025, [arXiv:2508.05512](https://arxiv.org/abs/2508.05512)) — eval platform with
   human/LLM feedback.
 
 **How RRL differs.** These largely *train or prompt a (neural / LLM) reranker* from feedback.
@@ -74,7 +72,7 @@ liar/deception counter, evaluated honestly with a stated failure mode.
 
 ## 4. Evaluation methodology
 
-- **"Benchmarking is Broken — Don't Let AI Be Its Own Judge"** ([arXiv:2510.07575](https://arxiv.org/html/2510.07575v2)) —
+- **"Benchmarking is Broken — Don't Let AI Be Its Own Judge"** (NeurIPS 2025, [arXiv:2510.07575](https://arxiv.org/abs/2510.07575)) —
   warns against LLM-judge circularity. RRL's evaluation independently arrived at this: an
   earlier circular Gate A (training on the eval label) was identified and replaced with an
   independent verifier, and the LLM judge is deliberately demoted.

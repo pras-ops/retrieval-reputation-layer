@@ -48,3 +48,7 @@ data/*.gz
 .huggingface/
 scratch/
 
+# Simulation results
+sim/results/
+
+
