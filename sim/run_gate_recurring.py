@@ -263,6 +263,8 @@ def run_arm(
     use_real: bool,
     cross_encoder=None,
     replay_mode: bool = False,
+    gamma: float = 0.95,
+    explore: bool = True,
 ) -> List[float]:
     random.seed(seed)
     query_problems, corpus_docs = build_dataset(seed)
@@ -285,10 +287,10 @@ def run_arm(
             res = retriever.retrieve(
                 problem["text"],
                 top_k=1,
-                explore=True,
+                explore=explore,
                 epsilon=0.0,
                 current_timestamp=float(step),
-                gamma=0.95,
+                gamma=gamma,
                 decay_unit_sec=1.0,
             )
             top = res[0][0]
@@ -334,7 +336,7 @@ def run_arm(
                 {r[0].id: r[2] for r in res},
                 y,
                 current_timestamp=float(step),
-                gamma=0.95,
+                gamma=gamma,
                 decay_unit_sec=1.0,
                 credit_smoothing=0.50,
                 use_liar_counter=True,
@@ -371,6 +373,17 @@ def main():
     )
     ap.add_argument("--seeds", type=int, default=5)
     ap.add_argument("--epochs", type=int, default=8)
+    ap.add_argument(
+        "--gamma",
+        type=float,
+        default=0.95,
+        help="per-step reputation decay for the RRL arm (1.0 = no decay)",
+    )
+    ap.add_argument(
+        "--no-explore",
+        action="store_true",
+        help="disable Thompson-sampling exploration in the RRL arm (pure exploitation)",
+    )
     ap.add_argument(
         "--out", type=str, default="sim/results/gate_r.json", help="path to save JSON results"
     )
@@ -431,6 +444,8 @@ def main():
             use_cag=True,
             use_real=use_real and not args.mock,
             replay_mode=args.replay,
+            gamma=args.gamma,
+            explore=not args.no_explore,
         )
 
         static_overall.append(sum(sh) / len(sh))
@@ -458,7 +473,8 @@ def main():
                         "epochs": args.epochs,
                         "model": "gemini-2.5-flash",
                         "weights": [0.20, 0.40, 0.10, 0.30],
-                        "gamma": 0.95,
+                        "gamma": args.gamma,
+                        "explore": not args.no_explore,
                         "replay": args.replay,
                         "mode": mode_str,
                     },
