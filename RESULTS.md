@@ -254,3 +254,16 @@ the Δ→0 / no-recurrence corner of the sweep in §4b.
 * Query-conditional pooling is under-tested for the reason given in §3.
 * The Δ sweep uses a synthetic verifier. Retrieval, corpus and shortlists are real; the
   outcome channel is not.
+* **B9's noise model is mis-specified and should not be read as a validated noise
+  correction.** A unit-test verifier is essentially exact about "did this code pass", so
+  there is no meaningful false-positive rate to correct. B9 feeds it `rho_fp = P(pass |
+  wrong document)`, which is not verifier error at all — it is *evidence-attribution*
+  uncertainty wearing verifier error's clothes. The correction machinery itself is correct
+  and unit-tested in isolation (`tests/test_regressions.py::TestGradedRewardAndNoise`), and
+  the rates are additionally self-estimated from the same cache being evaluated, which is
+  circular. Applying it properly needs a verifier that genuinely errs (an LLM judge, a
+  flaky test suite) with rates measured on a held-out audited sample.
+* **Failure attribution is implemented but untested end-to-end.** The taxonomy and the
+  update gating exist and are unit-tested, but nothing classifies outcomes automatically,
+  so every observation in §3–§5 is labelled `RETRIEVAL`. The attribution lever is available,
+  not evaluated.
