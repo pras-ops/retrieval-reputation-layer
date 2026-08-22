@@ -1,0 +1,36 @@
+{
+  "name": "rrl_retrieval_benchmark",
+  "version": "1.0.0",
+  "build_seed": 20260822,
+  "ground_truth_source": {
+    "dataset": "code-rag-bench/mbpp",
+    "paper": "arXiv:2406.14497",
+    "note": "canonical document per problem is manually annotated upstream"
+  },
+  "corpus_source": {
+    "dataset": "code-rag-bench/programming-solutions"
+  },
+  "verifier_sources": {
+    "mbpp": "3 asserts per problem (from CodeRAG-Bench task rows)",
+    "mbpp_plus": "evalplus MbppPlus v0.2.0, ~108 tests per problem"
+  },
+  "construction": {
+    "query_leakage_stripped": true,
+    "leakage_note": "upstream canonical docs prefix the problem statement as a comment or docstring; removed uniformly from all documents, else BM25 alone scores 99.7% Hit@1 and no reranking signal is measurable",
+    "candidates_per_task": 7,
+    "tier1_same_topic_family": 4,
+    "tier2_other_family": 1,
+    "tier3_irrelevant_humaneval": 1,
+    "declared_by": "this repository (distractors only; correct doc is external)"
+  },
+  "counts": {
+    "tasks": 297,
+    "candidate_docs": 1128,
+    "skipped_tasks": 203
+  },
+  "files": {
+    "rrl_tasks.jsonl": "77470cb0ec6d6a3ca75aa17454a80b349f790a4b348c86c9c5f5fcdf1b67e3e6",
+    "rrl_candidates.jsonl": "626a5d629d12dc109656b081e73957177717cae2c945e7308f2b4ef91bc73826"
+  },
+  "invariant": "definition files are immutable; observed outcomes live in data/outcomes/"
+}

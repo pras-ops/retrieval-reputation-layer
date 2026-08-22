@@ -184,8 +184,10 @@ synthetic and calibrated so that only the signal gap changes (base rate held at 
 Rank correlation between the predicted and observed crossover epoch: **ρ = 0.964,
 p = 0.0005**. Two readings:
 
-* **The gain saturates around Δ ≈ 0.5.** Past that a better verifier buys almost nothing
-  (+7.1 → +7.9 from Δ=0.5 to Δ=1.0). There is a "good enough verifier" threshold.
+* **The gain appears to saturate around Δ ≈ 0.5** (+7.1 → +7.9 from Δ=0.5 to Δ=1.0).
+  **Superseded — see §8.3:** on a benchmark where the correct document is always present in
+  the candidate set, the gain is linear in Δ all the way to 1.0. The saturation here was a
+  shortlist-recall artifact, not a property of Δ.
 * **Below Δ ≈ 0.1 the mechanism does not converge at all** within 120 epochs. That is a
   genuine floor, not slow progress.
 
@@ -267,3 +269,168 @@ the Δ→0 / no-recurrence corner of the sweep in §4b.
   update gating exist and are unit-tested, but nothing classifies outcomes automatically,
   so every observation in §3–§5 is labelled `RETRIEVAL`. The attribution lever is available,
   not evaluated.
+
+
+---
+
+# Part II — Rebuilt on external ground truth
+
+Part I diagnosed the mechanism on a corpus we built ourselves. Part II re-runs it on a
+frozen benchmark whose correct documents are annotated by someone else, and answers the
+verifier question with four real verifiers instead of one.
+
+```bash
+python3 sim/patch_evalplus_macos.py          # one-time, macOS only
+python3 sim/regrade_mbpp_plus.py             # re-grade cached completions, no API calls
+python3 sim/build_benchmark.py               # freeze the benchmark + hashed manifest
+python3 sim/run_bench_v2.py --seeds 8 --epochs 64 --curve --tiers
+python3 sim/run_bench_v2.py --seeds 8 --epochs 64 --delta-sweep 0.05,0.1,0.2,0.245,0.4,0.6,0.8,1.0
+```
+
+## 8.1 A stricter verifier does NOT help — hypothesis refuted
+
+Hypothesis going in: Δ = 0.245 is low because MBPP's three asserts let *false passes*
+through on wrong evidence; MBPP+ (~108 tests/problem, 36×) should catch them and sharpen Δ
+for free. This is testable with no new generation, since the completions are already cached.
+
+Re-graded 366 of the 942 cached completions (the ones whose task ids are among MBPP+'s 378):
+
+| verifier | P(pass \| correct) | P(pass \| wrong) | Δ | Δ 95% CI |
+| :--- | ---: | ---: | ---: | :--- |
+| MBPP (3 asserts, binary) | 0.875 (n=24) | 0.637 (n=342) | **0.238** | [+0.096, +0.379] |
+| MBPP (3 asserts, graded) | 0.875 | 0.650 | 0.225 | |
+| MBPP+ (~108 tests, binary) | 0.750 | 0.599 | **0.151** | [−0.030, +0.331] |
+| MBPP+ (~108 tests, graded) | 0.817 | 0.709 | 0.108 | |
+
+**Δ gets worse, and MBPP+'s CI now includes zero.** MBPP+ does catch false passes — 47 of
+239 MBPP passes are overturned, 19.7% — but the decisive question is whether they are
+*concentrated* on wrong evidence:
+
+| condition | false-pass rate |
+| :--- | ---: |
+| correct evidence | 4/21 = **0.190** [0.077, 0.400] |
+| wrong evidence | 43/218 = **0.197** [0.150, 0.255] |
+| difference | **+0.007** [−0.169, +0.183], Fisher exact **p = 1.000** |
+
+Identical. A stricter verifier removes passes from both conditions at the same rate, so it
+cannot sharpen the evidence signal — it only lowers both arms, and with n=24 on the correct
+side that shows up as a *drop* in Δ.
+
+**What this establishes:** the model passing on wrong evidence is not subtly-wrong code
+slipping past weak tests. It is the model genuinely not needing the evidence. Verifier
+strength is not the lever; task selection is. That was previously an inference from §4a —
+it is now a measurement.
+
+## 8.2 The frozen benchmark, and a trap it caught
+
+`sim/build_benchmark.py` freezes a benchmark on [CodeRAG-Bench](https://arxiv.org/abs/2406.14497),
+whose canonical document per problem is **manually annotated upstream** — so the ground
+truth is not ours. What is ours, and declared in the manifest, is the distractor
+construction: 1 correct + 4 same-family + 1 other-family + 1 irrelevant = 7 candidates,
+fixed per task at a pinned seed. Definition files carry SHA-256 hashes and live apart from
+any observed outcome, which is the structural fix for the contamination in §0.
+
+**The trap:** the upstream canonical documents prefix the problem statement as a comment
+(MBPP) or docstring (HumanEval). The "correct" document therefore *contains the query
+verbatim*. First build:
+
+| arm | Hit@1 |
+| :--- | ---: |
+| BM25 only | **99.7%** |
+| dense only | 98.6% |
+| cross-encoder | 99.4% |
+
+Retrieval had collapsed into string matching and no reranking signal was measurable.
+`strip_query_leakage()` removes the leading comment/docstring from **every** document,
+correct and distractor alike, so no arm is advantaged. After stripping, BM25 falls from
+99.7% to **26.3%** — that is how much of it was reading a copy of the query. Anyone using
+this corpus for retrieval research should check for this.
+
+## 8.3 External replication: RRL adds, and pooling finally proves out
+
+297 tasks × 7 fixed candidates, 8 seeds, oracle verifier. Every arm ranks identical candidates.
+
+| arm | Hit@1 | MRR | nDCG@5 | ep1 | ep8 | ep16 | ep64 | vs dense |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| dense only | 87.2 | 0.923 | 0.941 | 87.2 | 87.2 | 87.2 | 87.2 | — |
+| BM25 only | 26.3 | 0.468 | 0.528 | flat | | | 26.3 | −60.9 |
+| RRF hybrid | 50.2 | 0.692 | 0.763 | flat | | | 50.2 | −37.0 |
+| cross-encoder | 76.8 | 0.864 | 0.893 | flat | | | 76.8 | −10.4 |
+| dense + Thompson | 89.3 | 0.932 | 0.946 | 86.7 | 89.5 | 90.5 | 90.6 | +2.1 (p<0.0001) |
+| dense + RRL | 88.9 | 0.930 | 0.945 | 86.4 | 89.0 | 90.2 | 90.9 | +1.7 (p<0.0001) |
+| **dense + RRL + pooling** | **90.4** | **0.938** | **0.951** | 86.4 | 90.9 | 92.9 | **95.7** | **+3.2 (p<0.0001)** |
+| CE + RRL + pooling | 83.4 | 0.892 | 0.914 | 77.4 | 84.1 | 87.1 | 89.2 | −3.8 |
+| RRF + RRL + pooling | 58.9 | 0.729 | 0.789 | 48.5 | 58.8 | 65.8 | 70.8 | −28.3 |
+
+Four things, and the third resolves a stated limitation from Part I:
+
+* **The +5.0 result replicates on ground truth we did not annotate**: +3.2 pts at 16 epochs,
+  rising to **+8.5 over the static baseline by epoch 64** (95.7 vs 87.2), monotone throughout.
+* **Dense beats the cross-encoder again** (87.2 vs 76.8), independently confirming §2 on a
+  different corpus with different candidate sets. Two corpora now agree: the cross-encoder
+  is the wrong base ranker for this task.
+* **Query-conditional pooling now clearly matters: +4.8 pts over global counters** (95.7 vs
+  90.9 at epoch 64), against +0.9 in Part I. Part I flagged that as under-tested because its
+  distractors were never correct for *any* query, so global counters were unbiased by
+  construction. Here candidates are drawn from a shared 964-document pool, so a document
+  genuinely is right for one query and wrong for others — the condition pooling exists for.
+  The limitation is resolved, and pooling is vindicated.
+* **The layer lifts a weak base a long way but does not rescue it**: RRF climbs +20.6
+  (48.5 → 70.8) and CE +11.8 (77.4 → 89.2), yet neither passes dense-only. Stack on the best
+  base ranker available.
+
+Error composition confirms the distractor tiers are calibrated, and shows *where* the layer
+works: tier-1 same-family distractors absorb ~90% of all errors, and RRL shifts errors
+further onto them (89.5% → 94.2%) while cutting irrelevant-document errors from 5.3% to
+1.6%. It clears the easy confusions; the residual is genuine same-family ambiguity.
+
+## 8.4 Δ → gain is linear, and Part I's saturation was an artifact
+
+Same frozen benchmark, same arm, verifier diagnosticity swept with a calibrated channel,
+64 epochs, against the 87.2% static baseline:
+
+| Δ | final Hit@1 | gain | ep4 | ep8 | ep16 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.05 | 87.9% | +0.7 | 86.3 | 86.8 | 86.7 |
+| 0.10 | 88.3% | +1.1 | 86.6 | 86.4 | 86.8 |
+| 0.20 | 89.7% | +2.5 | 86.7 | 86.4 | 87.8 |
+| **0.245** *(measured)* | **90.5%** | **+3.3** | 87.3 | 87.5 | 87.8 |
+| 0.40 | 92.2% | +5.0 | 87.8 | 88.2 | 89.8 |
+| 0.60 | 93.6% | +6.4 | 87.5 | 88.7 | 91.0 |
+| 0.80 | 94.5% | +7.3 | 88.0 | 89.6 | 92.3 |
+| 1.00 | 95.7% | +8.5 | 88.4 | 90.9 | 92.9 |
+
+```
+gain (Hit@1 pts) = 0.85 + 8.25 * Delta        R^2 = 0.961
+```
+
+**This corrects §4b.** Part I found the gain saturating past Δ ≈ 0.5 and read that as a
+"good enough verifier" threshold. On a benchmark where the correct document is *always* in
+the candidate set, the relationship is linear to Δ = 1.0. The saturation was a
+shortlist-recall ceiling — the old shortlist sometimes did not contain the answer, so no
+amount of verifier quality could help — not a property of diagnosticity. Retract the
+threshold claim.
+
+The law gives a falsifiable prediction: at the measured real verifier (Δ = 0.245) the
+expected gain is **+2.9 to +3.3 points**, reached over tens of epochs. That is the number to
+check once the cache is regenerated with real generation.
+
+## 8.5 What Part II did not settle
+
+* **Per-task Δ still needs generation.** MBPP+ grading gives ~108 tests per pair instead of
+  1 bit, but only **24 tasks** have both a correct-evidence and a wrong-evidence observation
+  in the existing cache, and the distribution stays lumpy (8 distinct values over 24 tasks).
+  A real Δ_q distribution needs a fresh probe at **temperature > 0 with k ≥ 8 samples per
+  (task, document) pair** — roughly 297 tasks × 7 docs × 8 ≈ 17k generations. Deterministic
+  sampling cannot substitute: at temperature 0 a per-task rate is its own single sample.
+* **Sample-split discipline is designed but unexercised.** When that probe runs, Δ_q must be
+  estimated on samples 1–4 and RRL evaluated on samples 5–8, or the Δ-bucket result is
+  selection on the dependent variable. Nothing here needed it yet because the sweep uses a
+  calibrated channel rather than measured per-task rates.
+* **Staleness is validated on Part I's corpus only** (§5, γ=0.99, 2.3× recovery). The port to
+  the frozen benchmark is mechanical but not done, so treat §5 as v1 evidence.
+* **The MBPP+ arm rests on n=24** correct-evidence rows. The false-pass concentration test
+  (p=1.000) is the robust part; the Δ point estimates are not.
+* **CodeSearchNet was evaluated and rejected**, not merely deferred: no verifiable outcome
+  (so it cannot produce Δ at all), 32.8% of its docstrings are irrelevant to their own code
+  by its authors' own count, and it has been public training data since 2019.
