@@ -5,8 +5,117 @@ confidence-weighted update step (κ) with exponential decay (γ).
 """
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Dict, Optional
 from .store import CandidateStore, _decay
+
+
+class Attribution(str, Enum):
+    """
+    What the outcome was actually caused by.
+
+    A failed task is not evidence against the retrieved document unless the document is
+    what made it fail. Charging every failure to the document teaches the layer that
+    good evidence is bad whenever the generator is weak, which is the fastest way to
+    make reputation anti-correlated with usefulness.
+    """
+
+    RETRIEVAL = "retrieval"  # the evidence decided the outcome -> full credit/blame
+    GENERATION = "generation"  # model erred despite adequate evidence -> almost none
+    VERIFIER = "verifier"  # verifier itself unreliable here -> none
+    PARSING = "parsing"  # output malformed before evidence mattered -> none
+    TIMEOUT = "timeout"  # no usable signal -> none
+    UNKNOWN = "unknown"  # unclassified -> half weight, discounted but not discarded
+
+
+# Multiplier applied to the update magnitude for each attribution class. `None`
+# attribution keeps full weight so existing callers are unaffected.
+ATTRIBUTION_WEIGHTS: Dict[str, float] = {
+    Attribution.RETRIEVAL.value: 1.0,
+    Attribution.GENERATION.value: 0.05,
+    Attribution.VERIFIER.value: 0.0,
+    Attribution.PARSING.value: 0.0,
+    Attribution.TIMEOUT.value: 0.0,
+    Attribution.UNKNOWN.value: 0.5,
+}
+
+
+def attribution_weight(attribution: Optional[str]) -> float:
+    if attribution is None:
+        return 1.0
+    key = attribution.value if isinstance(attribution, Attribution) else str(attribution)
+    return ATTRIBUTION_WEIGHTS.get(key, 1.0)
+
+
+@dataclass
+class VerifierNoise:
+    """
+    Asymmetric error rates of the verifier producing s_gt.
+
+    rho_fp: P(verifier says pass | answer actually wrong)
+    rho_fn: P(verifier says fail | answer actually right)
+
+    Measure these on a small audited sample rather than assuming zero. An unmodelled
+    false-negative rate is indistinguishable from "this document is bad", so it biases
+    reputation downward exactly where the verifier is weakest.
+    """
+
+    rho_fp: float = 0.0
+    rho_fn: float = 0.0
+
+    @property
+    def is_noiseless(self) -> bool:
+        return self.rho_fp <= 0.0 and self.rho_fn <= 0.0
+
+    @property
+    def separability(self) -> float:
+        """1 - rho_fp - rho_fn. At or below 0 the channel carries no information."""
+        return 1.0 - self.rho_fp - self.rho_fn
+
+
+def correct_outcome(
+    y_obs: float,
+    noise: Optional[VerifierNoise] = None,
+    mode: str = "bayes",
+    prior: float = 0.5,
+    clip: bool = True,
+) -> float:
+    """
+    Map a noisy verifier reading to the outcome the Beta counters should be updated with.
+
+    mode="backward"
+        Unbiased estimator of the clean outcome: (y - rho_fp) / (1 - rho_fn - rho_fp).
+        Unbiased in expectation but can leave [0, 1], which a Beta update cannot use
+        directly; `clip` trades that unbiasedness for admissibility.
+    mode="bayes"
+        Posterior P(true outcome = 1 | observation), given `prior`. Always in [0, 1] and
+        the natural fit for a Beta-Bernoulli posterior, at the cost of depending on the
+        prior. This is the default.
+
+    Both reduce to the identity when the verifier is noiseless.
+    """
+    if noise is None or noise.is_noiseless:
+        return y_obs
+    sep = noise.separability
+    if sep <= 1e-9:
+        # The channel is uninformative; fall back to the prior rather than amplifying noise.
+        return prior
+
+    if mode == "backward":
+        y = (y_obs - noise.rho_fp) / sep
+        return max(0.0, min(1.0, y)) if clip else y
+
+    # Bayes posterior, interpolated for graded observations.
+    p1 = (1.0 - noise.rho_fn) * prior
+    p1_den = p1 + noise.rho_fp * (1.0 - prior)
+    post_pass = p1 / p1_den if p1_den > 0 else prior
+
+    p0 = noise.rho_fn * prior
+    p0_den = p0 + (1.0 - noise.rho_fp) * (1.0 - prior)
+    post_fail = p0 / p0_den if p0_den > 0 else prior
+
+    w = max(0.0, min(1.0, y_obs))
+    return w * post_pass + (1.0 - w) * post_fail
 
 
 @dataclass
@@ -19,6 +128,10 @@ class OutcomeSignals:
     )
     s_judge: Optional[float] = None  # cheap judge faithfulness-focused
     s_expl: Optional[float] = None  # thumbs up / down (1.0 / 0.0)
+    # What caused this outcome. Gates how much of it lands on the document's reputation.
+    attribution: Optional[Attribution] = None
+    # Measured verifier error rates, if known. Left None the verifier is trusted exactly.
+    noise: Optional[VerifierNoise] = None
 
 
 def calculate_outcome(
@@ -75,6 +188,35 @@ def calculate_outcome(
         return None
 
     return total_weighted_sum / total_weight
+
+
+def calculate_kappa(y: float, signals: Optional["OutcomeSignals"] = None, mode: str = "auto") -> float:
+    """
+    Update magnitude kappa in [0, 1].
+
+    mode="decisiveness" (the original) uses 2*|y-0.5|, which reads a mid-range outcome as
+    an uncertain one. That is wrong for a graded reward: "7 of 10 tests passed" is a
+    confident measurement of partial success, not a coin flip, yet it would be applied at
+    40% strength and a genuinely informative signal would be thrown away.
+
+    mode="confidence" uses the reliability of the *channel* instead of the value: a
+    verifier reading is full strength whatever it says, and a noisy verifier is
+    discounted by how much of its signal survives (1 - rho_fp - rho_fn).
+
+    mode="auto" (default) picks confidence whenever a verifier signal is present and
+    falls back to decisiveness for soft behavioural signals only.
+    """
+    if mode == "decisiveness":
+        return 2.0 * abs(y - 0.5)
+
+    has_verifier = signals is not None and signals.s_gt is not None
+    if mode == "auto" and not has_verifier:
+        return 2.0 * abs(y - 0.5)
+
+    kappa = 1.0
+    if signals is not None and signals.noise is not None and not signals.noise.is_noiseless:
+        kappa *= max(0.0, min(1.0, signals.noise.separability))
+    return kappa
 
 
 def calculate_robust_estimate(candidate, mode: str = "beta") -> float:
@@ -142,6 +284,8 @@ def update_counters(
     robust_estimator_mode: str = "beta",
     signals: Optional[OutcomeSignals] = None,
     cluster_id: Optional[str] = None,
+    kappa_mode: str = "auto",
+    noise_correction_mode: str = "bayes",
 ) -> None:
     """
     Updates Beta-counters (short-term alpha, beta and permanent A, B) for candidates
@@ -173,6 +317,8 @@ def update_counters(
         robust_estimator_mode=robust_estimator_mode,
         signals=signals,
         cluster_id=cluster_id,
+        kappa_mode=kappa_mode,
+        noise_correction_mode=noise_correction_mode,
     )
 
 
@@ -188,6 +334,8 @@ def update_counters_from_shares(
     robust_estimator_mode: str = "beta",
     signals: Optional[OutcomeSignals] = None,
     cluster_id: Optional[str] = None,
+    kappa_mode: str = "auto",
+    noise_correction_mode: str = "bayes",
 ) -> None:
     """
     Updates Beta-counters using pre-computed credit shares.
@@ -200,8 +348,13 @@ def update_counters_from_shares(
 
         current_timestamp = time.time()
 
-    # Calculate κ (decisiveness factor, in [0, 1])
-    kappa = 2.0 * abs(y - 0.5)
+    # Correct the reading for known verifier error rates before it becomes evidence, then
+    # size the update by how much of the signal is real and how much of the outcome is
+    # actually attributable to the retrieved evidence.
+    if signals is not None and signals.noise is not None:
+        y = correct_outcome(y, signals.noise, mode=noise_correction_mode)
+    kappa = calculate_kappa(y, signals, mode=kappa_mode)
+    kappa *= attribution_weight(signals.attribution if signals is not None else None)
 
     # Perform updates
     for cid, share_val in shares.items():
@@ -254,10 +407,11 @@ def update_counters_from_shares(
                 now=current_timestamp,
             )
         else:
-            # In-memory CandidateStore updates
-            # Decay short term counters first based on last_confirmed timestamp
-            last_confirmed = candidate.last_confirmed
-            dt = current_timestamp - last_confirmed
+            # In-memory CandidateStore updates.
+            # Age the existing evidence from the last observation of any kind before
+            # folding in the new one.
+            anchor = candidate.decay_anchor
+            dt = (current_timestamp - anchor) if anchor is not None else 0.0
             if dt > 0 and decay_unit_sec > 0:
                 days = dt / decay_unit_sec
                 candidate.alpha = _decay(candidate.alpha, gamma, days)
@@ -290,8 +444,10 @@ def update_counters_from_shares(
                         "last_confirmed": current_timestamp,
                     }
                 cc = candidate.cluster_counters[cluster_id]
-                cc_lc = cc.get("last_confirmed", current_timestamp)
-                cc_dt = current_timestamp - cc_lc
+                cc_anchor = cc.get("last_feedback")
+                if cc_anchor is None:
+                    cc_anchor = cc.get("last_confirmed", current_timestamp)
+                cc_dt = (current_timestamp - cc_anchor) if cc_anchor is not None else 0.0
                 if cc_dt > 0 and decay_unit_sec > 0:
                     cc_days = cc_dt / decay_unit_sec
                     cc["alpha"] = _decay(cc.get("alpha", 1.0), gamma, cc_days)
@@ -310,10 +466,15 @@ def update_counters_from_shares(
                 cc["recent_outcomes"] = cc_outcomes
                 if y > 0.5:
                     cc["last_confirmed"] = current_timestamp
+                cc["last_feedback"] = current_timestamp
                 candidate.cluster_counters[cluster_id] = cc
 
+            # last_confirmed keeps its narrow meaning (last time this worked);
+            # last_feedback advances on every observation and is the decay anchor, so
+            # failures age at the same rate as successes.
             if y > 0.5:
                 candidate.last_confirmed = current_timestamp
+            candidate.last_feedback = current_timestamp
             candidate.last_updated = current_timestamp
             store.update_candidate(candidate)
 
@@ -329,6 +490,8 @@ def update_counters_with_signals(
     use_adt_denoising: bool = False,
     robust_estimator_mode: str = "beta",
     cluster_id: Optional[str] = None,
+    kappa_mode: str = "auto",
+    noise_correction_mode: str = "bayes",
 ) -> None:
     """
     Updates Beta-counters for a set of candidates using pre-computed credit shares
@@ -357,9 +520,13 @@ def update_counters_with_signals(
         y = calculate_outcome(signals, trust_score=trust_score)
         if y is None:
             continue
+        if signals.noise is not None:
+            y = correct_outcome(y, signals.noise, mode=noise_correction_mode)
 
-        # Decisiveness factor κ
-        kappa = 2.0 * abs(y - 0.5)
+        # Update magnitude: signal reliability, scaled by how much of this outcome the
+        # retrieved evidence is answerable for.
+        kappa = calculate_kappa(y, signals, mode=kappa_mode)
+        kappa *= attribution_weight(signals.attribution)
 
         # Liar counter updates
         d_fooled = 0.0
@@ -405,9 +572,9 @@ def update_counters_with_signals(
                 now=current_timestamp,
             )
         else:
-            # Decay short term counters first
-            last_confirmed = candidate.last_confirmed
-            dt = current_timestamp - last_confirmed
+            # Age existing evidence from the last observation of any kind.
+            anchor = candidate.decay_anchor
+            dt = (current_timestamp - anchor) if anchor is not None else 0.0
             if dt > 0 and decay_unit_sec > 0:
                 days = dt / decay_unit_sec
                 candidate.alpha = _decay(candidate.alpha, gamma, days)
@@ -439,8 +606,10 @@ def update_counters_with_signals(
                         "last_confirmed": current_timestamp,
                     }
                 cc = candidate.cluster_counters[cluster_id]
-                cc_lc = cc.get("last_confirmed", current_timestamp)
-                cc_dt = current_timestamp - cc_lc
+                cc_anchor = cc.get("last_feedback")
+                if cc_anchor is None:
+                    cc_anchor = cc.get("last_confirmed", current_timestamp)
+                cc_dt = (current_timestamp - cc_anchor) if cc_anchor is not None else 0.0
                 if cc_dt > 0 and decay_unit_sec > 0:
                     cc_days = cc_dt / decay_unit_sec
                     cc["alpha"] = _decay(cc.get("alpha", 1.0), gamma, cc_days)
@@ -459,10 +628,15 @@ def update_counters_with_signals(
                 cc["recent_outcomes"] = cc_outcomes
                 if y > 0.5:
                     cc["last_confirmed"] = current_timestamp
+                cc["last_feedback"] = current_timestamp
                 candidate.cluster_counters[cluster_id] = cc
 
+            # last_confirmed keeps its narrow meaning (last time this worked);
+            # last_feedback advances on every observation and is the decay anchor, so
+            # failures age at the same rate as successes.
             if y > 0.5:
                 candidate.last_confirmed = current_timestamp
+            candidate.last_feedback = current_timestamp
             candidate.last_updated = current_timestamp
             store.update_candidate(candidate)
 

@@ -11,7 +11,7 @@ import time
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple
 
-from .store import Candidate, CandidateStore, _decay
+from .store import Candidate, CandidateStore, _decay, ts_to_db, ts_from_db
 
 
 SCHEMA_MODERN = """
@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     recent_outcomes TEXT NOT NULL DEFAULT '[]',
     cluster_counters TEXT NOT NULL DEFAULT '{}',
     last_confirmed  REAL NOT NULL,
+    last_feedback   REAL NOT NULL DEFAULT -1.0,
     last_updated    REAL NOT NULL
 );
 
@@ -127,6 +128,19 @@ class SqliteCandidateStore(CandidateStore):
                         pass
                     conn.execute("PRAGMA user_version = 2")
 
+            # v3: decay is anchored on the last observation of any kind, not only on the
+            # last confirmed success. Fresh databases already carry the column from
+            # SCHEMA_MODERN, so the ALTER is expected to fail there.
+            row = conn.execute("PRAGMA user_version").fetchone()
+            if (row[0] if row else 0) < 3:
+                try:
+                    conn.execute(
+                        "ALTER TABLE candidates ADD COLUMN last_feedback REAL NOT NULL DEFAULT -1.0"
+                    )
+                except sqlite3.OperationalError:
+                    pass
+                conn.execute("PRAGMA user_version = 3")
+
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
@@ -153,11 +167,18 @@ class SqliteCandidateStore(CandidateStore):
 
     def _row_to_candidate(self, row: sqlite3.Row, now: Optional[float]) -> Candidate:
         alpha, beta = row["alpha"], row["beta"]
-        last_confirmed = row["last_confirmed"]
-        if now is not None and self.gamma < 1.0:
-            dt = (now - last_confirmed) / self.decay_unit_sec
-            alpha = _decay(alpha, self.gamma, dt)
-            beta = _decay(beta, self.gamma, dt)
+        last_confirmed = ts_from_db(row["last_confirmed"])
+        keys = row.keys()
+        last_feedback = ts_from_db(row["last_feedback"]) if "last_feedback" in keys else None
+        # Age evidence from the last observation of any kind; an unset anchor means there
+        # is no evidence to age, so decay is skipped rather than measured against an
+        # unrelated time base.
+        anchor = last_feedback if last_feedback is not None else last_confirmed
+        if anchor is not None and now is not None and self.gamma < 1.0:
+            dt = (now - anchor) / self.decay_unit_sec
+            if dt > 0:
+                alpha = _decay(alpha, self.gamma, dt)
+                beta = _decay(beta, self.gamma, dt)
         return Candidate(
             id=row["id"],
             content=row["content"],
@@ -171,6 +192,7 @@ class SqliteCandidateStore(CandidateStore):
             recent_outcomes=json.loads(row["recent_outcomes"]),
             cluster_counters=json.loads(row["cluster_counters"]),
             last_confirmed=last_confirmed,
+            last_feedback=last_feedback,
             last_updated=row["last_updated"],
         )
 
@@ -180,8 +202,8 @@ class SqliteCandidateStore(CandidateStore):
         with self._txn() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO candidates "
-                "(id, content, metadata, alpha, beta, A, B, fooled, verified, recent_outcomes, cluster_counters, last_confirmed, last_updated) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "(id, content, metadata, alpha, beta, A, B, fooled, verified, recent_outcomes, cluster_counters, last_confirmed, last_feedback, last_updated) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     candidate.id,
                     candidate.content,
@@ -194,7 +216,8 @@ class SqliteCandidateStore(CandidateStore):
                     candidate.verified,
                     json.dumps(candidate.recent_outcomes),
                     json.dumps(candidate.cluster_counters),
-                    candidate.last_confirmed,
+                    ts_to_db(candidate.last_confirmed),
+                    ts_to_db(candidate.last_feedback),
                     candidate.last_updated,
                 ),
             )
@@ -213,7 +236,7 @@ class SqliteCandidateStore(CandidateStore):
         with self._txn() as conn:
             cur = conn.execute(
                 "UPDATE candidates SET content=?, metadata=?, alpha=?, beta=?, "
-                "A=?, B=?, fooled=?, verified=?, recent_outcomes=?, cluster_counters=?, last_confirmed=?, last_updated=? WHERE id=?",
+                "A=?, B=?, fooled=?, verified=?, recent_outcomes=?, cluster_counters=?, last_confirmed=?, last_feedback=?, last_updated=? WHERE id=?",
                 (
                     candidate.content,
                     json.dumps(candidate.metadata),
@@ -225,7 +248,8 @@ class SqliteCandidateStore(CandidateStore):
                     candidate.verified,
                     json.dumps(candidate.recent_outcomes),
                     json.dumps(candidate.cluster_counters),
-                    candidate.last_confirmed,
+                    ts_to_db(candidate.last_confirmed),
+                    ts_to_db(candidate.last_feedback),
                     candidate.last_updated,
                     candidate.id,
                 ),
@@ -263,9 +287,14 @@ class SqliteCandidateStore(CandidateStore):
         now: Optional[float] = None,
     ) -> None:
         """
-        Atomically: decay short-term counters based on time since last_confirmed, then add deltas.
-        If cluster_id is specified, decays and updates that cluster's counters as well.
-        Updates last_confirmed to `now` if recent_outcome > 0.5 (indicating verification success).
+        Atomically: decay short-term counters based on time since the last observation,
+        then add deltas. If cluster_id is specified, decays and updates that cluster too.
+
+        `last_feedback` advances on every call, because an observation is an observation
+        whether or not it was a success — anchoring only on successes gives negative
+        evidence an unbounded lifetime while positive evidence expires.
+        `last_confirmed` keeps its narrower meaning and advances only when the outcome is
+        positive, so callers can still ask when a document last worked.
         """
         if now is None:
             now = time.time()
@@ -273,15 +302,19 @@ class SqliteCandidateStore(CandidateStore):
         try:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
-                "SELECT alpha, beta, A, B, fooled, verified, recent_outcomes, cluster_counters, last_confirmed, last_updated FROM candidates WHERE id=?",
+                "SELECT alpha, beta, A, B, fooled, verified, recent_outcomes, cluster_counters, last_confirmed, last_feedback, last_updated FROM candidates WHERE id=?",
                 (candidate_id,),
             ).fetchone()
             if row is None:
                 conn.execute("ROLLBACK")
                 raise KeyError(f"Candidate with ID {candidate_id} not found in store.")
 
-            last_confirmed = row["last_confirmed"]
-            dt = (now - last_confirmed) / self.decay_unit_sec
+            last_confirmed = ts_from_db(row["last_confirmed"])
+            last_feedback = ts_from_db(row["last_feedback"])
+            anchor = last_feedback if last_feedback is not None else last_confirmed
+            dt = ((now - anchor) / self.decay_unit_sec) if anchor is not None else 0.0
+            if dt < 0:
+                dt = 0.0
             alpha = _decay(row["alpha"], self.gamma, dt) + d_alpha
             beta = _decay(row["beta"], self.gamma, dt) + d_beta
             A = row["A"] + d_A
@@ -325,14 +358,17 @@ class SqliteCandidateStore(CandidateStore):
                 cc["recent_outcomes"] = cc_outcomes
                 if recent_outcome is not None and recent_outcome > 0.5:
                     cc["last_confirmed"] = now
+                cc["last_feedback"] = now
                 cluster_counters[cluster_id] = cc
 
-            # Update global last_confirmed if verification/outcome is positive
+            # last_confirmed narrows to successes; last_feedback tracks every observation
+            # and is what decay is measured against.
             if recent_outcome is not None and recent_outcome > 0.5:
                 last_confirmed = now
+            last_feedback = now
 
             conn.execute(
-                "UPDATE candidates SET alpha=?, beta=?, A=?, B=?, fooled=?, verified=?, recent_outcomes=?, cluster_counters=?, last_confirmed=?, last_updated=? WHERE id=?",
+                "UPDATE candidates SET alpha=?, beta=?, A=?, B=?, fooled=?, verified=?, recent_outcomes=?, cluster_counters=?, last_confirmed=?, last_feedback=?, last_updated=? WHERE id=?",
                 (
                     alpha,
                     beta,
@@ -342,7 +378,8 @@ class SqliteCandidateStore(CandidateStore):
                     verified,
                     json.dumps(outcomes),
                     json.dumps(cluster_counters),
-                    last_confirmed,
+                    ts_to_db(last_confirmed),
+                    ts_to_db(last_feedback),
                     now,
                     candidate_id,
                 ),

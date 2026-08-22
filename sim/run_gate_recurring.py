@@ -38,12 +38,14 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from rrl.store import CandidateStore
 from rrl.ingest import Ingester
 from rrl.retriever import Retriever
 from rrl.feedback import OutcomeSignals, calculate_outcome, update_counters
 from rrl.judge import _get_client
+from outcome_cache import OutcomeCache, OutcomeRecord, cache_for, sha256_text
 
 try:
     from google.genai import types
@@ -207,42 +209,55 @@ def stats(data: List[float]) -> Tuple[float, float, float, float]:
 
 # ---------------------------------------------------------------- cache logic
 
-GLOBAL_CACHE: Dict[str, dict] = {}
-CACHE_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "data", "mbpp_sweep_cache.jsonl")
-)
+# Provenance-checked outcome cache. Mock and real outcomes live in separate files, and a
+# replay refuses rows that do not say who produced them — a cache that mixes the two
+# converts the reproducibility story into a way to publish synthetic labels as results.
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+CACHE: Optional[OutcomeCache] = None
+GENERATOR_MODEL = "gemini-2.5-flash"
 
 
-def load_cache():
-    global GLOBAL_CACHE
-    GLOBAL_CACHE = {}
-    if os.path.exists(CACHE_PATH):
-        with open(CACHE_PATH, "r") as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        data = json.loads(line)
-                        k = f"{data['task_id']}_{data['retrieved_id']}"
-                        GLOBAL_CACHE[k] = data
-                    except Exception:
-                        pass
+def load_cache(mock: bool = False):
+    global CACHE
+    CACHE = cache_for(DATA_DIR, mock=mock).load()
+    return CACHE
+
+
+def cache_lookup(task_id: int, retrieved_id: str) -> Optional[float]:
+    if CACHE is None:
+        return None
+    return CACHE.outcome(task_id, retrieved_id)
 
 
 def save_to_cache(
-    task_id: int, retrieved_id: str, retrieved_content: str, completion: str, passed: float
+    task_id: int,
+    retrieved_id: str,
+    retrieved_content: str,
+    completion: str,
+    passed: float,
+    *,
+    mock: bool,
+    seed: Optional[int] = None,
+    step: Optional[float] = None,
 ):
-    k = f"{task_id}_{retrieved_id}"
-    data = {
-        "task_id": task_id,
-        "retrieved_id": retrieved_id,
-        "retrieved_content": retrieved_content,
-        "completion": completion,
-        "passed": passed,
-    }
-    GLOBAL_CACHE[k] = data
-    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
-    with open(CACHE_PATH, "a") as f:
-        f.write(json.dumps(data) + "\n")
+    if CACHE is None:
+        return
+    CACHE.put(
+        OutcomeRecord(
+            task_id=task_id,
+            retrieved_id=retrieved_id,
+            retrieved_content=retrieved_content,
+            completion=completion,
+            passed=passed,
+            generator="mock" if mock else GENERATOR_MODEL,
+            generator_version="selftest" if mock else "2026-08",
+            verifier="mbpp_unit_tests",
+            verifier_version="v1",
+            seed=seed,
+            timestamp=step,
+            prompt_sha256=sha256_text(retrieved_content),
+        )
+    )
 
 
 # ---------------------------------------------------------------- one run
@@ -255,6 +270,7 @@ def run_arm(
     use_real: bool,
     cross_encoder=None,
     replay_mode: bool = False,
+    mock: bool = False,
 ) -> List[float]:
     random.seed(seed)
     query_problems, corpus_docs = build_dataset(seed)
@@ -294,18 +310,28 @@ def run_arm(
             else:
                 top = res[0][0]
 
-        cache_key = f"{problem['task_id']}_{top.id}"
-        if cache_key in GLOBAL_CACHE:
-            passed = GLOBAL_CACHE[cache_key]["passed"]
+        cached = cache_lookup(problem["task_id"], top.id)
+        if cached is not None:
+            passed = cached
         elif replay_mode:
             raise RuntimeError(
-                f"Replay cache miss for key: {cache_key}. Cannot run in replay mode without cache."
+                f"Replay cache miss for ({problem['task_id']}, {top.id}). A replay cannot "
+                f"invent an outcome; regenerate the cache or narrow the sweep."
             )
         else:
             state = random.getstate()
             completion = generate(problem, top.content, use_real)
             passed = run_tests(problem, completion)
-            save_to_cache(problem["task_id"], top.id, top.content, completion, passed)
+            save_to_cache(
+                problem["task_id"],
+                top.id,
+                top.content,
+                completion,
+                passed,
+                mock=mock,
+                seed=seed,
+                step=float(step),
+            )
             random.setstate(state)
 
         history.append(passed)
@@ -366,7 +392,7 @@ def main():
         selftest()
         return
 
-    load_cache()
+    load_cache(mock=args.mock)
 
     use_real = os.getenv("USE_REAL_GEMINI", "false").lower() == "true"
     if not use_real and not args.mock and not args.replay:
@@ -377,6 +403,7 @@ def main():
     if args.mock:
         print("!" * 80)
         print("WARNING: --mock generator in use. RESULTS ARE NOT A VALID BENCHMARK, plumbing only.")
+        print("Mock outcomes are written to data/mock_cache.jsonl and can never enter a replay.")
         print("!" * 80)
 
     cross_encoder = None
@@ -402,6 +429,7 @@ def main():
             use_real=use_real and not args.mock,
             cross_encoder=cross_encoder,
             replay_mode=args.replay,
+            mock=args.mock,
         )
         ch = run_arm(
             s,
@@ -409,6 +437,7 @@ def main():
             use_cag=True,
             use_real=use_real and not args.mock,
             replay_mode=args.replay,
+            mock=args.mock,
         )
 
         static_overall.append(sum(sh) / len(sh))

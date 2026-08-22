@@ -25,8 +25,10 @@ GAMMA = float(os.getenv("RRL_GAMMA", "0.98"))
 
 # Initialize components (lazily initialized or created at startup)
 store = SqliteCandidateStore(db_path=DB_PATH, gamma=GAMMA, decay_unit_sec=DECAY_UNIT_SEC)
-# Default weights to balanced exploration: (0.20, 0.40, 0.10, 0.30)
-retriever = Retriever(store, weights=(0.20, 0.40, 0.10, 0.30))
+# Relevance leads, reputation adjusts, exploration perturbs. The exploration weight is
+# held at w_sim/7 so a wide-open Beta(1,1) posterior cannot outvote the base retriever.
+DEFAULT_WEIGHTS = (0.70, 0.20, 0.10, 0.10)
+retriever = Retriever(store, weights=DEFAULT_WEIGHTS)
 
 
 # Pydantic schemas
@@ -50,7 +52,8 @@ class CandidateSchema(BaseModel):
     verified: float
     recent_outcomes: List[float]
     cluster_counters: dict = {}
-    last_confirmed: float
+    last_confirmed: Optional[float] = None
+    last_feedback: Optional[float] = None
     last_updated: float
 
 
@@ -109,6 +112,7 @@ def retrieve(req: RetrieveRequest):
                         recent_outcomes=cand.recent_outcomes,
                         cluster_counters=cand.cluster_counters,
                         last_confirmed=cand.last_confirmed,
+                        last_feedback=cand.last_feedback,
                         last_updated=cand.last_updated,
                     ),
                     score=score,

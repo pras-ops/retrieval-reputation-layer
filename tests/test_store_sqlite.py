@@ -116,7 +116,7 @@ class TestSqliteCandidateStore(unittest.TestCase):
         conn = s._connect()
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            self.assertEqual(version, 2)
+            self.assertEqual(version, 3)
         finally:
             conn.close()
 

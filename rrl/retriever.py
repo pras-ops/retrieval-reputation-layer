@@ -6,6 +6,7 @@ Supports both real text queries (via SentenceTransformer + BM25) and pre-compute
 """
 
 from collections import Counter
+from dataclasses import replace
 import math
 import re
 from typing import Dict, List, Tuple, Optional, Union, Any
@@ -183,6 +184,11 @@ class Retriever:
         current_timestamp: Optional[float] = None,
         gamma: float = 1.0,
         decay_unit_sec: float = 86400.0,
+        cluster_id: Optional[str] = None,
+        shortlist_k: Optional[int] = None,
+        base_scores: Optional[Dict[str, float]] = None,
+        exploration_mode: Optional[str] = None,
+        warmup_observations: Optional[float] = None,
     ) -> List[Tuple[Candidate, float, float]]:
         """
         Retrieves the top_k candidates.
@@ -194,13 +200,29 @@ class Retriever:
             explore: Whether to apply Beta distribution sampling and rarity bonus.
             override_weights: Custom weights (w_sim, w_c, w_p, w_explore).
             epsilon: Epsilon-greedy parameter.
+            cluster_id: Explicit query-conditional counter key. Reputation is then kept
+                per (cluster, document) rather than per document alone, which matters
+                whenever a document is right for some queries and wrong for others.
+                Overrides the built-in embedding clusterer when supplied.
+            shortlist_k: Rerank only the base retriever's best `shortlist_k` candidates.
+                Set this to the same value the baseline reranker sees, or the comparison
+                measures candidate-set size instead of ranking quality.
+            base_scores: Relevance from an external base ranker (e.g. a cross-encoder),
+                keyed by candidate id. Supplied, it replaces the internal RRF score, so
+                the layer stacks on top of the stronger ranker instead of competing
+                with it.
         """
         w_sim, w_c, w_p, w_explore = (
             override_weights if override_weights is not None else self.weights
         )
 
-        self.last_query_cluster = "cluster_0" if self.use_clustering else None
-        cluster_id = "cluster_0" if self.use_clustering else None
+        # An explicit cluster_id from the caller always wins; otherwise fall back to the
+        # embedding clusterer when clustering is enabled, and to no conditioning at all.
+        explicit_cluster = cluster_id
+        self.last_query_cluster = explicit_cluster
+        if explicit_cluster is None:
+            cluster_id = "cluster_0" if self.use_clustering else None
+            self.last_query_cluster = cluster_id
 
         # Check if first parameter is a real text query
         if isinstance(vector_scores, str):
@@ -211,7 +233,10 @@ class Retriever:
 
             # 1. Compute query embedding
             query_emb = self.model.encode(query).tolist()
-            if self.use_clustering:
+            if explicit_cluster is not None:
+                cluster_id = explicit_cluster
+                self.last_query_cluster = explicit_cluster
+            elif self.use_clustering:
                 cluster_id = self.clusterer.assign(query_emb)
                 self.clusterer.save(self.store)
                 self.last_query_cluster = cluster_id
@@ -254,6 +279,17 @@ class Retriever:
         # 5. Normalize RRF scores to obtain sim(i) in [0, 1]
         sim_scores = self._normalize_scores(rrf_scores)
 
+        # 5b. Stack on an external base ranker when one is supplied. The shortlist is
+        # still drawn by the cheap fused score, then relevance within it comes from the
+        # stronger ranker, which is what makes this a layer rather than a replacement.
+        if base_scores:
+            if shortlist_k is not None and shortlist_k > 0 and len(sim_scores) > shortlist_k:
+                keep = sorted(sim_scores, key=lambda k: sim_scores[k], reverse=True)[:shortlist_k]
+                sim_scores = {k: sim_scores[k] for k in keep}
+            overlap = {cid: base_scores[cid] for cid in sim_scores if cid in base_scores}
+            if overlap:
+                sim_scores = self._normalize_scores(overlap)
+
         # Delegate ranking, scoring and epsilon-greedy exploration to ReputationLayer
         rescore_result = self.layer.rescore(
             sims=sim_scores,
@@ -266,14 +302,39 @@ class Retriever:
             robust_estimator_mode=robust_estimator_mode,
             gamma=gamma,
             decay_unit_sec=decay_unit_sec,
+            shortlist_k=shortlist_k,
+            exploration_mode=exploration_mode,
+            warmup_observations=warmup_observations,
         )
         self.last_response_id = rescore_result.response_id
 
-        # Resolve IDs back to Candidate tuples for backward compatibility
+        # Resolve IDs back to Candidate tuples for backward compatibility.
+        #
+        # Callers are handed a *decayed view*: a copy whose counters reflect the age of
+        # the evidence at `current_timestamp`. The stored record is left alone, so
+        # scoring a document never changes its reputation — only feedback does.
         results = []
         for cid, score, sim in rescore_result.results:
             resolved = self.store.get_candidate(cid)
             if resolved:
-                results.append((resolved, score, sim))
+                results.append((self._decayed_view(resolved, current_timestamp, gamma, decay_unit_sec), score, sim))
 
         return results
+
+    @staticmethod
+    def _decayed_view(
+        candidate: Candidate,
+        now: Optional[float],
+        gamma: float,
+        decay_unit_sec: float,
+    ) -> Candidate:
+        """Copy of `candidate` with counters aged to `now`. Never mutates the original."""
+        alpha, beta, A, B = candidate.effective_counters(
+            now=now, gamma=gamma, decay_unit_sec=decay_unit_sec
+        )
+        if alpha == candidate.alpha and beta == candidate.beta:
+            return candidate
+        view = replace(candidate, alpha=alpha, beta=beta, A=A, B=B)
+        if now is not None:
+            view.last_updated = now
+        return view
