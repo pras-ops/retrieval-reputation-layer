@@ -263,7 +263,21 @@ Reported honestly — what the tests/sims actually establish, and what they don'
   benchmark below.
   
   ![Gate D Comparison](sim/gate_d_comparison.png)
-- **Gate E — realistic recurring-query benchmark** (`sim/run_gate_recurring.py`, MBPP): 10 independent seeds, 8 recurring epochs, **real Gemini generation**, **real unit-test verifier**. Under natural recurrence of programming problem families, RRL with global counters beats a strong cross-encoder baseline. Overall pass rate: static baseline **54.0% [40.6%, 67.4%]** vs RRL **56.9% [50.9%, 62.8%]**. Late-stage pass rate: static baseline **54.2% [39.9%, 68.5%]** vs RRL **59.0% [52.5%, 65.4%]**.
+- **Gate E — realistic recurring-query benchmark** (`sim/run_bench.py`, MBPP):
+  ⚠️ **The previously published Gate E pass-rate numbers have been withdrawn.** The replay
+  cache they were computed from was 41% mock-generated (585 rows whose completion is
+  byte-for-byte the mock generator's `pass` stub, plus 73 whose completion equals the
+  retrieved document), and mock labels are a perfect function of retrieval correctness, so
+  they manufacture the very effect the benchmark was measuring. The contaminated rows are
+  in `data/quarantine/`; `sim/quarantine_cache.py` reproduces the split.
+
+  The benchmark has been rebuilt around **ranking metrics** (Hit@1 / MRR / nDCG@5, one
+  observation per query) rather than task pass rate, with every arm reranking the same
+  top-5 shortlist. Headline result, 10 seeds × 16 epochs, oracle verifier:
+  dense baseline **53.7%** Hit@1 vs **RRL + query-conditional pooling 58.6%**
+  (**+5.0 pts paired, p=0.0029**). With the real unit-test verifier the same arm gains
+  nothing (−1.0 pts, n.s.) — see `RESULTS.md` for why, and for the verifier-diagnosticity
+  bound that predicts it.
 
   ![Gate E Comparison](sim/gate_recurring_comparison.png)
 

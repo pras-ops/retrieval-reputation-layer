@@ -26,9 +26,9 @@ class TestRobustnessUpgrades(unittest.TestCase):
         # 1. Test fresh DB initialization
         store = SqliteCandidateStore(self.db_path)
         with closing(store._connect()) as conn:
-            # Check user_version is 2
+            # v3 adds the last_feedback decay anchor.
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            self.assertEqual(version, 2)
+            self.assertEqual(version, 3)
             # Check table structure
             cols = [r["name"] for r in conn.execute("PRAGMA table_info(candidates)").fetchall()]
             self.assertIn("fooled", cols)
@@ -58,12 +58,13 @@ class TestRobustnessUpgrades(unittest.TestCase):
         conn_legacy.commit()
         conn_legacy.close()
 
-        # Load store - should run migrations and bump user_version to 2
+        # Load store - should run migrations and bump user_version to the current schema
         store_legacy = SqliteCandidateStore(self.db_path)
         with closing(store_legacy._connect()) as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            self.assertEqual(version, 2)
+            self.assertEqual(version, 3)
             cols = [r["name"] for r in conn.execute("PRAGMA table_info(candidates)").fetchall()]
+            self.assertIn("last_feedback", cols)
             self.assertIn("fooled", cols)
             self.assertIn("verified", cols)
             self.assertIn("recent_outcomes", cols)

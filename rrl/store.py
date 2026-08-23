@@ -16,6 +16,22 @@ def _decay(value: float, gamma: float, dt_units: float) -> float:
     return 1.0 + (value - 1.0) * (gamma**dt_units)
 
 
+# Sentinel for "no timestamp yet" in stores whose columns are NOT NULL.
+# Both wall-clock and simulated time are non-negative, so -1.0 is unambiguous.
+UNSET_TS = -1.0
+
+
+def ts_to_db(value: Optional[float]) -> float:
+    return UNSET_TS if value is None else float(value)
+
+
+def ts_from_db(value: Optional[float]) -> Optional[float]:
+    if value is None:
+        return None
+    v = float(value)
+    return None if v <= UNSET_TS else v
+
+
 @dataclass
 class Candidate:
     id: str
@@ -38,15 +54,72 @@ class Candidate:
     # Query-conditional counters (cluster_id -> dict of counters)
     cluster_counters: Dict[str, dict] = field(default_factory=dict)
 
-    # Timestamp tracking for recency-based decay and updates
-    last_confirmed: float = 0.0
+    # Timestamp tracking.
+    #
+    # last_confirmed: when this candidate was last *confirmed useful* (positive outcome
+    #   only). Semantic field, reported to callers; NOT the decay anchor.
+    # last_feedback:  when this candidate last received an observation of any kind,
+    #   success or failure. This is the decay anchor: evidence ages from the last time
+    #   evidence arrived, so positive and negative evidence have equal lifetimes.
+    # last_updated:   wall-clock creation/write stamp. Informational only — never used
+    #   for decay, so it cannot leak wall time into a simulated run.
+    #
+    # All three start as None meaning "never happened". A None anchor means there is no
+    # evidence to age, so decay is skipped. That is what keeps a candidate created under
+    # one time base from being decayed against another.
+    last_confirmed: Optional[float] = None
+    last_feedback: Optional[float] = None
     last_updated: float = field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).timestamp()
     )
 
-    def __post_init__(self):
-        if not self.last_confirmed:
-            self.last_confirmed = self.last_updated
+    @property
+    def decay_anchor(self) -> Optional[float]:
+        """
+        Timestamp evidence ages from: the last observation, else the last confirmation,
+        else the record's own write stamp.
+
+        The final fallback is safe in both directions. A candidate ingested under wall
+        time and scored under simulated time yields a negative dt, which is treated as
+        "no elapsed time" rather than as decay; and a freshly ingested candidate sits at
+        the Beta(1,1) prior, which decay leaves untouched by construction.
+        """
+        if self.last_feedback is not None:
+            return self.last_feedback
+        if self.last_confirmed is not None:
+            return self.last_confirmed
+        return self.last_updated
+
+    def effective_counters(
+        self,
+        now: Optional[float] = None,
+        gamma: float = 1.0,
+        decay_unit_sec: float = 86400.0,
+    ) -> Tuple[float, float, float, float]:
+        """
+        Decayed (alpha, beta, A, B) for scoring, computed without mutating the record.
+
+        Decay must be a function of elapsed time, not of how many times a candidate was
+        read. Returning values instead of writing them back makes repeated scoring
+        idempotent: reading a document a hundred times between observations leaves its
+        stored reputation exactly where the last observation left it.
+        """
+        anchor = self.decay_anchor
+        if anchor is None or now is None or gamma >= 1.0 or decay_unit_sec <= 0:
+            return self.alpha, self.beta, self.A, self.B
+        dt = (now - anchor) / decay_unit_sec
+        if dt <= 0:
+            return self.alpha, self.beta, self.A, self.B
+        return (
+            _decay(self.alpha, gamma, dt),
+            _decay(self.beta, gamma, dt),
+            self.A,
+            self.B,
+        )
+
+    def observations(self) -> float:
+        """Total evidence mass on the short-term counters (Beta(1,1) prior = 0)."""
+        return max(0.0, self.alpha + self.beta - 2.0)
 
     def get_cluster(self, cid: str) -> dict:
         """Returns the cluster dict, creating it with prior values if missing."""
@@ -60,6 +133,7 @@ class Candidate:
                 "verified": 0.0,
                 "recent_outcomes": [],
                 "last_confirmed": self.last_confirmed,
+                "last_feedback": self.last_feedback,
             }
         return self.cluster_counters[cid]
 
@@ -77,6 +151,7 @@ class Candidate:
             "recent_outcomes": self.recent_outcomes,
             "cluster_counters": self.cluster_counters,
             "last_confirmed": self.last_confirmed,
+            "last_feedback": self.last_feedback,
             "last_updated": self.last_updated,
         }
 
@@ -94,7 +169,8 @@ class Candidate:
             verified=data.get("verified", 0.0),
             recent_outcomes=data.get("recent_outcomes", []),
             cluster_counters=data.get("cluster_counters", {}),
-            last_confirmed=data.get("last_confirmed", 0.0),
+            last_confirmed=data.get("last_confirmed"),
+            last_feedback=data.get("last_feedback"),
             last_updated=data.get(
                 "last_updated", datetime.datetime.now(datetime.timezone.utc).timestamp()
             ),

@@ -1,0 +1,5 @@
+verifier,n_correct,n_wrong,p_correct,p_wrong,delta,obs_required_80pct_power
+mbpp_3_binary,80,862,0.7625,0.5174,0.2451,56.3
+mbpp_3_graded,80,862,0.7750,0.5418,0.2332,61.0
+mbpp_plus_binary,24,342,0.7500,0.5994,0.1506,148.0
+mbpp_plus_graded,24,342,0.8167,0.7092,0.1075,241.7

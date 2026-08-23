@@ -38,12 +38,14 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from rrl.store import CandidateStore
 from rrl.ingest import Ingester
 from rrl.retriever import Retriever
 from rrl.feedback import OutcomeSignals, calculate_outcome, update_counters
 from rrl.judge import _get_client
+from outcome_cache import OutcomeCache, OutcomeRecord, cache_for, sha256_text
 
 try:
     from google.genai import types
@@ -207,27 +209,24 @@ def stats(data: List[float]) -> Tuple[float, float, float, float]:
 
 # ---------------------------------------------------------------- cache logic
 
-GLOBAL_CACHE: Dict[str, dict] = {}
-CACHE_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "data", "mbpp_sweep_cache.jsonl")
-)
+# Provenance-checked outcome cache. Mock and real outcomes live in separate files, and a
+# replay refuses rows that do not say who produced them — a cache that mixes the two
+# converts the reproducibility story into a way to publish synthetic labels as results.
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+CACHE: Optional[OutcomeCache] = None
+GENERATOR_MODEL = "gemini-2.5-flash"
 
 
-def load_cache(expected_generator: str):
-    global GLOBAL_CACHE
-    GLOBAL_CACHE = {}
-    if os.path.exists(CACHE_PATH):
-        with open(CACHE_PATH, "r") as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        data = json.loads(line)
-                        if data.get("generator") != expected_generator:
-                            continue
-                        k = f"{data['task_id']}_{data['retrieved_id']}"
-                        GLOBAL_CACHE[k] = data
-                    except Exception:
-                        pass
+def load_cache(mock: bool = False):
+    global CACHE
+    CACHE = cache_for(DATA_DIR, mock=mock).load()
+    return CACHE
+
+
+def cache_lookup(task_id: int, retrieved_id: str) -> Optional[float]:
+    if CACHE is None:
+        return None
+    return CACHE.outcome(task_id, retrieved_id)
 
 
 def save_to_cache(
@@ -236,21 +235,29 @@ def save_to_cache(
     retrieved_content: str,
     completion: str,
     passed: float,
-    generator: str,
+    *,
+    mock: bool,
+    seed: Optional[int] = None,
+    step: Optional[float] = None,
 ):
-    k = f"{task_id}_{retrieved_id}"
-    data = {
-        "task_id": task_id,
-        "retrieved_id": retrieved_id,
-        "retrieved_content": retrieved_content,
-        "completion": completion,
-        "passed": passed,
-        "generator": generator,
-    }
-    GLOBAL_CACHE[k] = data
-    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
-    with open(CACHE_PATH, "a") as f:
-        f.write(json.dumps(data) + "\n")
+    if CACHE is None:
+        return
+    CACHE.put(
+        OutcomeRecord(
+            task_id=task_id,
+            retrieved_id=retrieved_id,
+            retrieved_content=retrieved_content,
+            completion=completion,
+            passed=passed,
+            generator="mock" if mock else GENERATOR_MODEL,
+            generator_version="selftest" if mock else "2026-08",
+            verifier="mbpp_unit_tests",
+            verifier_version="v1",
+            seed=seed,
+            timestamp=step,
+            prompt_sha256=sha256_text(retrieved_content),
+        )
+    )
 
 
 # ---------------------------------------------------------------- one run
@@ -263,8 +270,7 @@ def run_arm(
     use_real: bool,
     cross_encoder=None,
     replay_mode: bool = False,
-    gamma: float = 0.95,
-    explore: bool = True,
+    mock: bool = False,
 ) -> List[float]:
     random.seed(seed)
     query_problems, corpus_docs = build_dataset(seed)
@@ -287,10 +293,10 @@ def run_arm(
             res = retriever.retrieve(
                 problem["text"],
                 top_k=1,
-                explore=explore,
+                explore=True,
                 epsilon=0.0,
                 current_timestamp=float(step),
-                gamma=gamma,
+                gamma=0.95,
                 decay_unit_sec=1.0,
             )
             top = res[0][0]
@@ -304,20 +310,27 @@ def run_arm(
             else:
                 top = res[0][0]
 
-        cache_key = f"{problem['task_id']}_{top.id}"
-        if cache_key in GLOBAL_CACHE:
-            passed = GLOBAL_CACHE[cache_key]["passed"]
+        cached = cache_lookup(problem["task_id"], top.id)
+        if cached is not None:
+            passed = cached
         elif replay_mode:
             raise RuntimeError(
-                f"Replay cache miss for key: {cache_key}. Cannot run in replay mode without cache."
+                f"Replay cache miss for ({problem['task_id']}, {top.id}). A replay cannot "
+                f"invent an outcome; regenerate the cache or narrow the sweep."
             )
         else:
             state = random.getstate()
             completion = generate(problem, top.content, use_real)
             passed = run_tests(problem, completion)
-            generator_name = "gemini-2.5-flash" if use_real else "mock"
             save_to_cache(
-                problem["task_id"], top.id, top.content, completion, passed, generator_name
+                problem["task_id"],
+                top.id,
+                top.content,
+                completion,
+                passed,
+                mock=mock,
+                seed=seed,
+                step=float(step),
             )
             random.setstate(state)
 
@@ -336,7 +349,7 @@ def run_arm(
                 {r[0].id: r[2] for r in res},
                 y,
                 current_timestamp=float(step),
-                gamma=gamma,
+                gamma=0.95,
                 decay_unit_sec=1.0,
                 credit_smoothing=0.50,
                 use_liar_counter=True,
@@ -373,28 +386,13 @@ def main():
     )
     ap.add_argument("--seeds", type=int, default=5)
     ap.add_argument("--epochs", type=int, default=8)
-    ap.add_argument(
-        "--gamma",
-        type=float,
-        default=0.95,
-        help="per-step reputation decay for the RRL arm (1.0 = no decay)",
-    )
-    ap.add_argument(
-        "--no-explore",
-        action="store_true",
-        help="disable Thompson-sampling exploration in the RRL arm (pure exploitation)",
-    )
-    ap.add_argument(
-        "--out", type=str, default="sim/results/gate_r.json", help="path to save JSON results"
-    )
     args = ap.parse_args()
 
     if args.selftest:
         selftest()
         return
 
-    expected_generator = "mock" if args.mock else "gemini-2.5-flash"
-    load_cache(expected_generator)
+    load_cache(mock=args.mock)
 
     use_real = os.getenv("USE_REAL_GEMINI", "false").lower() == "true"
     if not use_real and not args.mock and not args.replay:
@@ -405,6 +403,7 @@ def main():
     if args.mock:
         print("!" * 80)
         print("WARNING: --mock generator in use. RESULTS ARE NOT A VALID BENCHMARK, plumbing only.")
+        print("Mock outcomes are written to data/mock_cache.jsonl and can never enter a replay.")
         print("!" * 80)
 
     cross_encoder = None
@@ -413,11 +412,6 @@ def main():
 
         cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
     except Exception as e:
-        if not args.mock and not args.selftest:
-            sys.exit(
-                f"ERROR: sentence-transformers is required for real/replay runs to evaluate the static baseline "
-                f"({e}). Please install the dependencies and ensure you are using the correct Python environment."
-            )
         print(f"[warn] cross-encoder unavailable ({e}); static baseline falls back to RRF top-1.")
 
     seeds = list(range(42, 42 + args.seeds))
@@ -426,8 +420,6 @@ def main():
     total_steps = args.epochs * 30  # n_query is 30
     static_step_correctness = [0.0] * total_steps
     cag_step_correctness = [0.0] * total_steps
-    all_static_curves = []
-    all_cag_curves = []
 
     for s in seeds:
         sh = run_arm(
@@ -437,6 +429,7 @@ def main():
             use_real=use_real and not args.mock,
             cross_encoder=cross_encoder,
             replay_mode=args.replay,
+            mock=args.mock,
         )
         ch = run_arm(
             s,
@@ -444,8 +437,7 @@ def main():
             use_cag=True,
             use_real=use_real and not args.mock,
             replay_mode=args.replay,
-            gamma=args.gamma,
-            explore=not args.no_explore,
+            mock=args.mock,
         )
 
         static_overall.append(sum(sh) / len(sh))
@@ -455,39 +447,9 @@ def main():
         cag_late.append(sum(ch[-k:]) / k)
         print(f"seed {s}: static={static_overall[-1]:.3f}  rrl={cag_overall[-1]:.3f}")
 
-        all_static_curves.append(sh)
-        all_cag_curves.append(ch)
-
         for step in range(min(total_steps, len(sh), len(ch))):
             static_step_correctness[step] += sh[step] / len(seeds)
             cag_step_correctness[step] += ch[step] / len(seeds)
-
-    if args.out:
-        os.makedirs(os.path.dirname(args.out), exist_ok=True)
-        with open(args.out, "w") as f:
-            mode_str = "mock" if args.mock else ("replay" if args.replay else "real")
-            json.dump(
-                {
-                    "config": {
-                        "seeds": seeds,
-                        "epochs": args.epochs,
-                        "model": "gemini-2.5-flash",
-                        "weights": [0.20, 0.40, 0.10, 0.30],
-                        "gamma": args.gamma,
-                        "explore": not args.no_explore,
-                        "replay": args.replay,
-                        "mode": mode_str,
-                    },
-                    "static_overall": static_overall,
-                    "rrl_overall": cag_overall,
-                    "static_late": static_late,
-                    "rrl_late": cag_late,
-                    "static_curve": static_step_correctness,
-                    "rrl_curve": cag_step_correctness,
-                },
-                f,
-                indent=2,
-            )
 
     so, co = stats(static_overall), stats(cag_overall)
     sl, cl = stats(static_late), stats(cag_late)
@@ -506,18 +468,6 @@ def main():
     print("=" * 90)
     print("Verdict: CI-separated => recurrence win is real; overlapping => not significant.")
 
-    # Paired t-test
-    try:
-        from scipy import stats as st
-
-        diffs = [c - s for c, s in zip(cag_late, static_late)]
-        t, p = st.ttest_rel(cag_late, static_late)
-        print(
-            f"Paired t-test (late-stage, n={len(diffs)}): mean diff={sum(diffs) / len(diffs):+.3f}, t={t:.2f}, p={p:.4f}"
-        )
-    except Exception as e:
-        print(f"[Warning] Paired t-test skipped: scipy not available or error occurred ({e})")
-
     # Generate Learning Curve Plot
     try:
         import matplotlib.pyplot as plt
@@ -530,78 +480,23 @@ def main():
                 ret.append(sum(window) / len(window))
             return ret
 
-        def mean_and_ci(curves: List[List[float]], step: int) -> Tuple[float, float]:
-            vals = [c[step] for c in curves if step < len(c)]
-            n = len(vals)
-            if n == 0:
-                return 0.0, 0.0
-            mean = sum(vals) / n
-            if n <= 1:
-                return mean, 0.0
-            var = sum((x - mean) ** 2 for x in vals) / (n - 1)
-            sem = math.sqrt(var) / math.sqrt(n)
-            try:
-                from scipy import stats as _st
-
-                t_val = float(_st.t.ppf(0.975, n - 1))
-            except Exception:
-                if n == 5:
-                    t_val = 2.776
-                elif n == 10:
-                    t_val = 2.262
-                else:
-                    t_val = 1.96 + 2.0 / n
-            return mean, t_val * sem
-
-        static_smoothed = [moving_average(c) for c in all_static_curves]
-        cag_smoothed = [moving_average(c) for c in all_cag_curves]
-
-        static_means, static_cis = [], []
-        cag_means, cag_cis = [], []
-        for step in range(total_steps):
-            s_mean, s_ci = mean_and_ci(static_smoothed, step)
-            c_mean, c_ci = mean_and_ci(cag_smoothed, step)
-            static_means.append(s_mean)
-            static_cis.append(s_ci)
-            cag_means.append(c_mean)
-            cag_cis.append(c_ci)
-
         plt.figure(figsize=(10, 6))
-        steps = range(total_steps)
-
         plt.plot(
-            steps,
-            static_means,
+            moving_average(static_step_correctness),
             label="Static Baseline (Cross-Encoder Reranked)",
             color="#dc2626",
             linewidth=2.5,
             linestyle="--",
         )
-        plt.fill_between(
-            steps,
-            [m - ci for m, ci in zip(static_means, static_cis)],
-            [m + ci for m, ci in zip(static_means, static_cis)],
-            color="#dc2626",
-            alpha=0.15,
-        )
-
         plt.plot(
-            steps,
-            cag_means,
+            moving_average(cag_step_correctness),
             label="RRL Feedback Loop (Thompson Sampling)",
             color="#2563eb",
             linewidth=3.0,
         )
-        plt.fill_between(
-            steps,
-            [m - ci for m, ci in zip(cag_means, cag_cis)],
-            [m + ci for m, ci in zip(cag_means, cag_cis)],
-            color="#2563eb",
-            alpha=0.15,
-        )
 
         plt.title(
-            "Gate Recurring (MBPP): Unit Test Pass Rate Learning Curve\n(Average across seeds with 95% Confidence Interval - Moving Average)",
+            "Gate Recurring (MBPP): Unit Test Pass Rate Learning Curve\n(Average across seeds - Moving Average)",
             fontsize=12,
             fontweight="bold",
         )
