@@ -86,8 +86,19 @@ def _get_client(project_id: Optional[str] = None):
     if not GENAI_AVAILABLE:
         return None
 
-    # 1. Try Vertex AI client first
-    gcp_project = os.environ.get("GCP_PROJECT_ID", project_id)
+    # 1. Try Vertex AI client first (supports GCP Application Default Credentials)
+    gcp_project = os.environ.get("GCP_PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT") or project_id
+    if not gcp_project:
+        try:
+            import configparser
+            cfg_path = os.path.expanduser("~/.config/gcloud/configurations/config_default")
+            if os.path.exists(cfg_path):
+                cp = configparser.ConfigParser()
+                cp.read(cfg_path)
+                gcp_project = cp.get("core", "project", fallback=None)
+        except Exception:
+            pass
+
     if gcp_project:
         try:
             gcp_region = os.environ.get("GCP_REGION", "us-central1")

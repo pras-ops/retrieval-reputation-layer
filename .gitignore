@@ -50,5 +50,6 @@ scratch/
 
 # Simulation results
 sim/results/
+.claude/
 
 

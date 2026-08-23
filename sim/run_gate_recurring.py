@@ -288,6 +288,7 @@ def run_arm(
         stream.extend(order)
 
     history = []
+    hit_history = []
     for step, problem in enumerate(stream):
         if use_cag:
             res = retriever.retrieve(
@@ -335,6 +336,8 @@ def run_arm(
             random.setstate(state)
 
         history.append(passed)
+        is_hit = 1.0 if top.id.startswith(f"good_{problem['task_id']}") else 0.0
+        hit_history.append(is_hit)
 
         if use_cag:
             signals = OutcomeSignals(
