@@ -48,8 +48,11 @@ data/*.gz
 .huggingface/
 scratch/
 
+# Paper directory (local-only, do not push)
+paper/
+paper/*
+
 # Simulation results
 sim/results/
-.claude/
 
 
