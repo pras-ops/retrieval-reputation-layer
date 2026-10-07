@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- `RESULTS.md` and the Gate E entry in the README now state the realistic MBPP benchmark at the
+  strength the data supports: with 10 seeds the confidence intervals overlap, so the lift over the
+  cross-encoder baseline is directional, not yet statistically significant. Absolute lifts are
+  labelled as percentage points.
+
+### Fixed
+- CI: the ruff rule set is pinned to `E4`, `E7`, `E9` and `F`. Newer ruff releases widened the
+  default selection and failed the build on style suggestions.
+- CI: mypy now ignores missing stubs for `google.*`, matching how `rrl/judge.py` imports
+  `google.genai`.
+
 ## [0.2.1] — 2026-07-13
 
 ### Fixed
