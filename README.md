@@ -164,7 +164,7 @@ pip install "retrieval-reputation-layer[embeddings,langchain]"    # or [embeddin
 from rrl.integrations.langchain import RRLRetriever
 from rrl.feedback import OutcomeSignals
 
-lc_retriever = RRLRetriever(rrl_retriever=retriever)   # retriever = rrl.Retriever(store)
+lc_retriever = RRLRetriever(rrl_retriever=retriever)  # retriever = rrl.Retriever(store)
 docs = lc_retriever.invoke("how do I avoid db anomalies?")
 
 # After observing the outcome downstream:

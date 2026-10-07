@@ -79,6 +79,10 @@ packages = ["rrl", "rrl.integrations"]
 line-length = 100
 target-version = "py310"
 
+[tool.ruff.lint]
+# Pin the rule set: newer ruff releases widen the default selection.
+select = ["E4", "E7", "E9", "F"]
+
 [tool.mypy]
 python_version = "3.10"
 warn_unused_configs = true
@@ -86,7 +90,7 @@ warn_unused_configs = true
 [[tool.mypy.overrides]]
 module = [
     "sentence_transformers.*",
-    "google.genai.*",
+    "google.*",
     "langchain.*",
     "langchain_core.*",
     "llama_index.*",
