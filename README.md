@@ -263,7 +263,7 @@ Reported honestly — what the tests/sims actually establish, and what they don'
   benchmark below.
   
   ![Gate D Comparison](sim/gate_d_comparison.png)
-- **Gate E — realistic recurring-query benchmark** (`sim/run_gate_recurring.py`, MBPP): 10 independent seeds, 8 recurring epochs, **real Gemini generation**, **real unit-test verifier**. Under natural recurrence of programming problem families, RRL with global counters beats a strong cross-encoder baseline. Overall pass rate: static baseline **54.0% [40.6%, 67.4%]** vs RRL **56.9% [50.9%, 62.8%]**. Late-stage pass rate: static baseline **54.2% [39.9%, 68.5%]** vs RRL **59.0% [52.5%, 65.4%]**.
+- **Gate E — realistic recurring-query benchmark** (`sim/run_gate_recurring.py`, MBPP): 10 independent seeds, 8 recurring epochs, **real Gemini generation**, **real unit-test verifier**. Under natural recurrence of programming problem families, RRL with global counters scores higher than a strong cross-encoder baseline. Overall pass rate: static baseline **54.0% [40.6%, 67.4%]** vs RRL **56.9% [50.9%, 62.8%]**. Late-stage pass rate: static baseline **54.2% [39.9%, 68.5%]** vs RRL **59.0% [52.5%, 65.4%]**. *At 10 seeds the CIs still overlap, so the lift is directional, not yet significant;* more seeds or a paired per-seed test would settle it, as 30 seeds did for Gate B. Details in [RESULTS.md](RESULTS.md).
 
   ![Gate E Comparison](sim/gate_recurring_comparison.png)
 

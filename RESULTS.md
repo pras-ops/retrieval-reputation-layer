@@ -17,8 +17,8 @@ This document presents the empirical validation results of the **Retrieval Reput
 
 | Metric | Static (Cross-Encoder) | RRL (Ours) | Absolute Lift | Relative Improvement |
 | :--- | :--- | :--- | :--- | :--- |
-| **Overall Pass Rate** | 0.540 [0.406, 0.674] | **0.569 [0.509, 0.628]** | **+2.9%** | **+5.4%** |
-| **Late-Stage Pass Rate** | 0.542 [0.399, 0.685] | **0.590 [0.525, 0.654]** | **+4.8%** | **+8.9%** |
+| **Overall Pass Rate** | 0.540 [0.406, 0.674] | **0.569 [0.509, 0.628]** | **+2.9 pts** | **+5.4%** |
+| **Late-Stage Pass Rate** | 0.542 [0.399, 0.685] | **0.590 [0.525, 0.654]** | **+4.8 pts** | **+8.9%** |
 
 *Note: In brackets `[...]` are the 95% confidence intervals across the 10 seeds.*
 
@@ -29,8 +29,9 @@ This document presents the empirical validation results of the **Retrieval Reput
 ### 1. The Learning Curve & Late-Stage Separation
 During the early epochs, RRL pays a small **exploration tax** to probe alternative retrieval candidates and gather outcome statistics. 
 * **Early stage:** The accuracies start closer as RRL populates the Beta counters.
-* **Late stage (epochs 5-8):** As the reputation counters converge, RRL transitions to robust exploitation. The late-stage pass rate separates clearly: **0.590 [0.525, 0.654]** for RRL versus **0.542 [0.399, 0.685]** for the static reranker.
-* **Statistical Significance:** While the overall confidence intervals overlap slightly due to the extreme variance of random seeds, RRL achieves a tighter variance bound (RRL CI width of `0.119` overall vs. Static CI width of `0.268`). This shows that RRL significantly stabilizes agent performance across different problem selections.
+* **Late stage (epochs 5-8):** As the reputation counters converge, RRL shifts toward exploitation and the gap widens to +4.8 pts: **0.590 [0.525, 0.654]** for RRL versus **0.542 [0.399, 0.685]** for the static reranker.
+* **Statistical significance — not yet established.** With 10 seeds, the 95% confidence intervals overlap for both the overall and the late-stage pass rate. This benchmark therefore shows a consistent *direction*, not a statistically established lift. RRL's results do vary less across seeds (CI width `0.119` vs `0.268` overall), but a narrower spread is not a significance test.
+* **What would settle it:** more seeds (Gate B needed 30 before its intervals separated), or a paired per-seed test, which fits here because both arms run on the same seeds and problem sets.
 
 ### 2. Mitigation of Distractor Noise
 The core failure mode of the static cross-encoder is its susceptibility to highly semantically similar but logically incorrect distractor chunks (e.g., a function with the same name but slightly different parameters).
@@ -38,8 +39,8 @@ The core failure mode of the static cross-encoder is its susceptibility to highl
 * RRL decays their reputation, ensuring they are penalised and evicted from top rankings in subsequent epochs.
 
 ### 3. Verification of Stated Boundaries
-These results confirm the central conditional claim of RRL:
-1. **Recurrence + Verifier = Win:** In recurring tasks (MBPP problem families) with a reliable verifier (unit tests), online reputation tracking yields a measurable, statistically robust lift over state-of-the-art static reranking.
+These results are consistent with the central conditional claim of RRL:
+1. **Recurrence + Verifier = Win:** In recurring tasks (MBPP problem families) with a reliable verifier (unit tests), online reputation tracking points the same way as the controlled gates: ahead of a strong static reranker overall, and further ahead once the counters converge. At 10 seeds that lift is directional, not yet statistically significant.
 2. **Exploration Trade-Off:** The exploration tax is minor, meaning that RRL is a viable candidate for production integration in environments where queries recur.
 
 ---
