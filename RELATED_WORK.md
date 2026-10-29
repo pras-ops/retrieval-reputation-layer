@@ -54,6 +54,45 @@ way ExpRAG / AWM / Dynamic Cheatsheet do.
   ([arXiv:2601.19535](https://arxiv.org/abs/2601.19535), ECIR 2026) — rerankers trained on the
   downstream utility of documents to the generator.
 
+### 1b′. The closest prior work (found 2026-10-29) — read before claiming novelty
+
+- **RATED** — *Reliability-Aware AI Agent Tool Retrieval via Execution Dynamics*
+  ([arXiv:2610.13889](https://arxiv.org/abs/2610.13889), CIKM 2026). A contextual bandit
+  re-ranks retrieved tools from real-time execution feedback; under a simulated 30% API failure
+  rate it cuts fault selection from 86.2% to 2.9%. Introduces the EcoAgent benchmark (5,172 real
+  tools, code public). **It already covers "learn which tools work from execution outcomes."** It
+  treats execution feedback as truthful and does not consider misleading descriptions, tools that
+  report false success, or partial verification.
+- **ESA** — *Learning When to Trust in Contextual Social Bandits*
+  ([arXiv:2603.13356](https://arxiv.org/abs/2603.13356), EWRL 2026). Learns a per-evaluator,
+  per-context trust boundary from a sparse stream of ground-truth audits and reweights feedback;
+  proves that no algorithm using social feedback alone avoids linear regret, and recovers the
+  truth with 80% adversarial evaluators. **This is the theory behind RRL's verifier-anchored
+  trust**; it has no LLM or tool application.
+- **LQM-ContextRoute** — *Latency-Quality Routing for Functionally Equivalent Tools in LLM Agents*
+  ([arXiv:2605.14241](https://arxiv.org/abs/2605.14241)): a contextual bandit among equivalent
+  tool providers, updated from LLM-judge feedback assumed trustworthy.
+- **Agents' Overreliance on Unreliable Tools** ([arXiv:2609.05587](https://arxiv.org/abs/2609.05587)):
+  across 14 models, agents adopt plausible-but-corrupted tool returns more than a third of the
+  time (68% for web search). Motivation for verifying tool outputs.
+- **Self-Reports Are Not Verification** ([arXiv:2609.00652](https://arxiv.org/abs/2609.00652)) and
+  **audit-budget allocation for agent fleets** ([arXiv:2607.28317](https://arxiv.org/abs/2607.28317)):
+  agent self-reports overstate success; verification is a budgeted resource.
+- **MCP threat modeling** ([arXiv:2603.22489](https://arxiv.org/abs/2603.22489)) lists the absence of
+  a reputation system for MCP servers as a trust-model weakness.
+- **RoMeRL** ([arXiv:2608.02508](https://arxiv.org/abs/2608.02508)): utility-learning memory suffers
+  from shared trajectory rewards and thin feedback per item ("memory-reward trap").
+- **Prediction-powered inference** (Angelopoulos et al., *Science* 2023) and its LLM-judge uses
+  (e.g. PRECISE, [arXiv:2606.05308](https://arxiv.org/abs/2606.05308)): combine few gold labels with
+  many model labels for unbiased *estimates*; offline evaluation, not online selection.
+
+**What remains specific to RRL** after this prior work: putting audit-anchored, per-item source
+trust (as in ESA) into reliability-aware tool selection (as in RATED), for agents whose tools can
+mislead through their descriptions and their own success reports, with per-context memory, and
+evaluating it on live MCP servers against an LLM choosing from the tool list. That is an
+integration and an empirical study, not a new estimator; RATED and an ESA-style aggregator are
+the baselines a reviewer will ask for.
+
 ### 1c. Agent tool / MCP selection (the application RRL is now evaluated on)
 
 - **ToolRet** ([arXiv:2503.01763](https://arxiv.org/abs/2503.01763), Findings of ACL 2025) —

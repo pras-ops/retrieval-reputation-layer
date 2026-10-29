@@ -19,10 +19,13 @@ is now evaluated on agent **tool / MCP selection** — over live MCP servers (Ga
 ToolRet tool descriptions (Gate T) — and on **web-scraping tool selection** (Gate W), alongside
 RAG benchmarks.
 
-The ranking rule (similarity + learned usefulness) overlaps with MemRL (arXiv 2601.03192). What
-RRL adds is **verifier-anchored, per-item trust in feedback** and **change detection** — the
-parts that matter when feedback can be fooled (poisoned tools, self-reporting scrapers) and
-when tools change.
+The ranking rule (similarity + learned usefulness) overlaps with MemRL (arXiv 2601.03192) and
+with RATED (CIKM 2026), which learns tool reliability from execution feedback; audit-anchored
+source trust has been studied in theory by ESA (EWRL 2026). What RRL contributes is combining
+**verifier-anchored, per-item trust in feedback** with tool selection and per-context memory, for
+agents whose tools can mislead through their descriptions or their own success reports — and an
+evaluation, including live MCP servers, of where that helps and where simpler methods win. See
+[PAPER.md](PAPER.md).
 
 > **What it is:** a reputation / usefulness-and-freshness layer for closed-loop retrieval.
 > **What it is not:** a better retriever, or a truth detector. It adds no value where queries
@@ -292,7 +295,7 @@ All replay offline from committed data, 30 seeds, paired statistics, with ablati
 
 | Gate | What it tests | Headline |
 |---|---|---|
-| **M** — live MCP servers (`sim/run_gate_m.py`) | Real MCP tools over stdio on local servers; a poisoned server with an injected instruction; a mid-run tool update; a flaky server; Gemini picking from the tool list; fully live runs agree with the replay | Reranker and Gemini pick the poisoned tool (0–8% solved); **RRL 43–67%**. With 20% spot checks MemRL-style is fooled (3–4%) and RRL is best on new sites (53–73% vs 18–20%). With every call verified, per-site "reuse what worked" still leads by 4–6 points (11–16 without the poisoned server) |
+| **M** — live MCP servers (`sim/run_gate_m.py`) | Real MCP tools over stdio on local servers; a poisoned server with an injected instruction; a mid-run tool update; a flaky server; Gemini picking from the tool list; fully live runs agree with the replay | Reranker and Gemini pick the poisoned tool (0–8% solved); **RRL 43–67%**. With 20% spot checks MemRL-style (3–4%) and a robust per-site memory (22–25%) are fooled; RRL keeps 43–52% and leads on new sites. With every call verified, the robust per-site memory leads by 8–21 points |
 | **T** — tool selection (`sim/run_gate_t.py`) | Real ToolRet requests and tool descriptions; tool updates, poisoned twins, flaky tools, held-out requests | Learning beats the static reranker (≈30% → 41–59%); **RRL and MemRL-style are close** (−2.4 to +4.6 points at exploration 0.10) |
 | **W** — web-scraping tools (`sim/run_gate_w.py`) | 8 executable extractors on 30 generated shops; tools' own success reports; redesigns; held-out sites | Same pattern as M: RRL resists over-reporting tools under sparse verification and generalizes to new sites; per-site memory wins when every call is verified |
 | **G** — private-API docs (`sim/run_gate_g.py`) | Real Gemini code against a generated library; poisoned guides; API switch | About level with MemRL-style without drift; **MemRL-style adapts 9–21 points better** after an API switch |
