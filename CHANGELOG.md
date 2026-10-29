@@ -68,6 +68,11 @@ All notable changes to this project are documented here. The format is based on
   `--live` runs every policy with real MCP calls; `--clean` drops the poisoned server. Includes a
   Gemini baseline that picks tools from the live tool list (`--llm`). Self-test in CI.
 - `mcp>=1.27,<2` in the `dev` extra.
+- Baseline `query_memory_robust`: per-context memory that keeps a working tool through an isolated
+  failure. Stronger than `query_memory` when every call is verified, more easily fooled under
+  spot checks.
+- `PAPER.md` (claim, evidence, pre-submission tasks, arXiv steps); ROADMAP rewritten around the
+  research track; every arXiv citation verified; Tool-Guard and TRUSTDESC added to related work.
 - `sim/summarize_results.py` prints the RESULTS.md tables from `sim/results/*.json`.
 - Gate F's 30-seed Gemini outcome table and results; `--timeouts-as-failures` records cells whose
   generation still times out after `--build` as failed (`"error": "timeout"`).

@@ -29,6 +29,8 @@ Policies (all pick 1 of the same 5 candidates per step):
   static_ce      cross-encoder rerank of the pool, no learning (the Gate E baseline)
   query_memory   per-query "reuse what worked": walk the cross-encoder order until a
                  document passes for this exact query, keep it while it keeps passing
+  query_memory_robust  the same, but keeping a document that has worked through an isolated
+                 failure (moving on after two in a row, three if unverified)
   memrl_q        MemRL-style (arXiv 2601.03192): (1-λ)·z(sim) + λ·z(Q), Q ← Q + α(r − Q)
   rrl            ReputationLayer, Gate E configuration (Thompson exploration, decay)
   rrl_nodecay    same, γ = 1 (no decay)
@@ -97,6 +99,7 @@ POLICIES = [
     "static_rrf",
     "static_ce",
     "query_memory",
+    "query_memory_robust",
     "memrl_q",
     "rrl",
     "rrl_nodecay",
@@ -460,6 +463,33 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
                 idx[t] = (idx[t] + 1) % len(ce_order[t])
 
         return choose_qm, update_qm
+
+    if name == "query_memory_robust":
+        # The same idea, robust to transient failures: search exactly like query_memory, but
+        # once a tool has worked for this request keep it through an isolated failure, moving
+        # on only after two failures in a row (three if none of them was verified).
+        idx_r: Dict[int, int] = defaultdict(int)
+        fails: Dict[int, int] = defaultdict(int)
+        locked: Dict[int, bool] = defaultdict(bool)
+
+        def choose_qmr(t, pool, step):
+            return ce_order[t][idx_r[t]]
+
+        def update_qmr(t, doc, signals, step):
+            if naive_reward(signals) > 0.5:
+                fails[t], locked[t] = 0, True
+                return
+            fails[t] += 1
+            verified = signals.s_gt is not None
+            if locked[t]:
+                move = (verified and fails[t] >= 2) or fails[t] >= 3
+            else:
+                move = True
+            if move:
+                idx_r[t] = (idx_r[t] + 1) % len(ce_order[t])
+                fails[t], locked[t] = 0, False
+
+        return choose_qmr, update_qmr
 
     if name == "memrl_q":
         lam, alpha, q_init = 0.5, 0.3, 0.5
@@ -851,6 +881,12 @@ def summarize(per_seed: Dict[str, Dict[str, List[float]]], seeds: List[int]) -> 
             ),
             "rrl_combined_ctx_verified_vs_query_memory": paired(
                 data["query_memory"], data["rrl_combined_ctx_verified"]
+            ),
+            "rrl_combined_ctx_verified_vs_query_memory_robust": paired(
+                data["query_memory_robust"], data["rrl_combined_ctx_verified"]
+            ),
+            "query_memory_robust_vs_query_memory": paired(
+                data["query_memory"], data["query_memory_robust"]
             ),
             "rrl_combined_ctx_verified_vs_memrl_q": paired(
                 data["memrl_q"], data["rrl_combined_ctx_verified"]

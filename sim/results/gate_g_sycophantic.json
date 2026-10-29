@@ -60,6 +60,7 @@
     "static_rrf",
     "static_ce",
     "query_memory",
+    "query_memory_robust",
     "memrl_q",
     "rrl",
     "rrl_nodecay",
@@ -95,6 +96,11 @@
       1.0
     ],
     "query_memory": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "query_memory_robust": [
       1.0,
       1.0,
       1.0
@@ -202,6 +208,11 @@
       1.0
     ],
     "query_memory": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "query_memory_robust": [
       1.0,
       1.0,
       1.0
@@ -390,6 +401,38 @@
       1.0
     ],
     "query_memory": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "query_memory_robust": [
       1.0,
       1.0,
       1.0,
@@ -1184,6 +1227,30 @@
         "t_test_p": 6.593018455890678e-19,
         "wilcoxon_p": 1.7040659206732472e-06
       },
+      "rrl_combined_ctx_verified_vs_query_memory_robust": {
+        "mean_diff": -0.07677083333333333,
+        "ci95": [
+          -0.08436219418704402,
+          -0.06917947247962264
+        ],
+        "wins": 0,
+        "losses": 30,
+        "ties": 0,
+        "t_test_p": 6.593018455890678e-19,
+        "wilcoxon_p": 1.7040659206732472e-06
+      },
+      "query_memory_robust_vs_query_memory": {
+        "mean_diff": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "wins": 0,
+        "losses": 0,
+        "ties": 30,
+        "t_test_p": 1.0,
+        "wilcoxon_p": 1.0
+      },
       "rrl_combined_ctx_verified_vs_memrl_q": {
         "mean_diff": 0.20625,
         "ci95": [
@@ -1509,6 +1576,30 @@
         "ties": 25,
         "t_test_p": 0.03135169328064963,
         "wilcoxon_p": 0.033894853524689274
+      },
+      "rrl_combined_ctx_verified_vs_query_memory_robust": {
+        "mean_diff": -0.003125,
+        "ci95": [
+          -0.005950250331296446,
+          -0.0002997496687035541
+        ],
+        "wins": 0,
+        "losses": 5,
+        "ties": 25,
+        "t_test_p": 0.03135169328064963,
+        "wilcoxon_p": 0.033894853524689274
+      },
+      "query_memory_robust_vs_query_memory": {
+        "mean_diff": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "wins": 0,
+        "losses": 0,
+        "ties": 30,
+        "t_test_p": 1.0,
+        "wilcoxon_p": 1.0
       },
       "rrl_combined_ctx_verified_vs_memrl_q": {
         "mean_diff": 0.23177083333333334,

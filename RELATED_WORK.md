@@ -4,8 +4,11 @@ RRL sits at the intersection of two active (2024–2026) research areas and one 
 statistical lineage. This document states where it fits, how it differs, and — honestly —
 where it has *not* yet been compared.
 
-> **Note:** citations below are for orientation. Verify exact venues/IDs against the source
-> before any formal submission; a few are cited by name where the identifier was not confirmed.
+> **Citation check (2026-10-29):** every arXiv identifier in this file, the README and
+> RESULTS.md was looked up through the arXiv API and its title matched the work cited. Works
+> cited without an identifier (Dawid & Skene 1979, GLAD, ADWIN, CLUB, ExpeL, Agent Workflow
+> Memory, Dynamic Cheatsheet, AutoRAG-HP, REARANK, CASE) still need their venue details added
+> before submission.
 
 ---
 
@@ -67,6 +70,14 @@ way ExpRAG / AWM / Dynamic Cheatsheet do.
 - **AutoTool** ([arXiv:2511.14650](https://arxiv.org/abs/2511.14650)) and **ToolTree**
   ([arXiv:2603.12740](https://arxiv.org/abs/2603.12740)) — tool selection from execution
   feedback, without untrusted-report handling or change detection.
+- **Tool-Guard** — *Think Twice Before You Act: Protecting LLM Agents Against Tool Description
+  Poisoning via Isolated Planning* ([arXiv:2606.20922](https://arxiv.org/abs/2606.20922), ICML
+  2026): partitions tools, plans in isolation and quarantines suspicious cross-tool influence;
+  reports near-zero attack success on AgentDojo and ASB. **TRUSTDESC**
+  ([arXiv:2604.07536](https://arxiv.org/abs/2604.07536)) regenerates trusted tool descriptions.
+  These defend *within a plan* against a poisoned description; RRL learns *across requests*
+  from verified outcomes which tools to trust. The two are complementary, and combining them is
+  untested.
 - Practice: MCP trust-scoring services (runtime reports, reporter-weighted reputation, schema
   drift checks) are emerging but early and not independently evaluated.
 
@@ -82,10 +93,12 @@ way ExpRAG / AWM / Dynamic Cheatsheet do.
 
 - Semantic caching: **vCache** ([arXiv:2502.03771](https://arxiv.org/abs/2502.03771), ICLR 2026)
   learns per-entry thresholds with error bounds.
-- Model routing with bandit feedback: PILOT ([arXiv:2508.21141](https://arxiv.org/abs/2508.21141)),
+- Model routing with bandit feedback: PILOT (*Adaptive LLM Routing under Budget Constraints*,
+  [arXiv:2508.21141](https://arxiv.org/abs/2508.21141)),
   BaRP ([arXiv:2510.07429](https://arxiv.org/abs/2510.07429)), ParetoBandit
   ([arXiv:2604.00136](https://arxiv.org/abs/2604.00136), with forgetting for drift).
-- Demonstration selection as a bandit: CASE, DEARICL ([arXiv:2609.06670](https://arxiv.org/abs/2609.06670)).
+- Demonstration selection as a bandit: CASE, and DEARICL (*Data Efficient Sample Selection for
+  In-Context Learning*, [arXiv:2609.06670](https://arxiv.org/abs/2609.06670)).
 
 ### 1b. Streaming benchmarks
 
@@ -163,6 +176,8 @@ liar/deception counter, evaluated honestly with a stated failure mode.
   environments) are still needed.
 - **Not compared against MemRL's code or benchmarks** — only a MemRL-style reimplementation of
   its ranking rule (`memrl_q`) on RRL's gates.
+- **Not compared against Tool-Guard**, the closest security baseline for poisoned tool
+  descriptions, nor run on MCPTox or MCPEvol-Bench tasks unmodified.
 - **Not evaluated on Evo-Memory** or a natural document corpus with real version changes.
 - **No strong-stack comparison** (query rewriting, multi-query, agent memory) — selection-level
   comparisons only.

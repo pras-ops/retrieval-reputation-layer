@@ -13,6 +13,7 @@ RES = os.path.join(HERE, "results")
 MAIN = [
     ("static_ce", "static reranker"),
     ("query_memory", "reuse what worked"),
+    ("query_memory_robust", "reuse what worked, robust"),
     ("memrl_q", "MemRL-style"),
     ("rrl_combined", "RRL combined"),
     ("rrl_combined_e10", "RRL combined, explore 0.10"),
@@ -34,6 +35,7 @@ MCP = [
     ("static_ce", "static reranker"),
     ("llm_picks", "Gemini picks from tool list"),
     ("query_memory", "reuse what worked"),
+    ("query_memory_robust", "reuse what worked, robust"),
     ("memrl_q", "MemRL-style"),
     ("rrl_combined", "RRL combined"),
     ("rrl_combined_ctx", "RRL combined + per-context"),

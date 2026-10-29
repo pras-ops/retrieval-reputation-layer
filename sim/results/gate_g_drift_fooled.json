@@ -61,6 +61,7 @@
     "static_rrf",
     "static_ce",
     "query_memory",
+    "query_memory_robust",
     "memrl_q",
     "rrl",
     "rrl_nodecay",
@@ -99,6 +100,11 @@
       0.75,
       0.75,
       0.75
+    ],
+    "query_memory_robust": [
+      0.5,
+      0.5,
+      0.5
     ],
     "memrl_q": [
       0.6157291666666667,
@@ -206,6 +212,11 @@
       1.0,
       1.0,
       1.0
+    ],
+    "query_memory_robust": [
+      0.0,
+      0.0,
+      0.0
     ],
     "memrl_q": [
       0.6786458333333333,
@@ -421,6 +432,38 @@
       0.75,
       0.75,
       0.75
+    ],
+    "query_memory_robust": [
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5
     ],
     "memrl_q": [
       0.6375,
@@ -1185,6 +1228,30 @@
         "t_test_p": 4.043047064846204e-27,
         "wilcoxon_p": 1.715928675058691e-06
       },
+      "rrl_combined_ctx_verified_vs_query_memory_robust": {
+        "mean_diff": 0.03937500000000001,
+        "ci95": [
+          0.02877460689557359,
+          0.049975393104426426
+        ],
+        "wins": 27,
+        "losses": 3,
+        "ties": 0,
+        "t_test_p": 2.2443244409183054e-08,
+        "wilcoxon_p": 3.843523704655559e-06
+      },
+      "query_memory_robust_vs_query_memory": {
+        "mean_diff": -0.25,
+        "ci95": [
+          -0.25,
+          -0.25
+        ],
+        "wins": 0,
+        "losses": 30,
+        "ties": 0,
+        "t_test_p": 0.0,
+        "wilcoxon_p": 4.3204630578274876e-08
+      },
       "rrl_combined_ctx_verified_vs_memrl_q": {
         "mean_diff": -0.07635416666666667,
         "ci95": [
@@ -1510,6 +1577,30 @@
         "ties": 0,
         "t_test_p": 2.6789281091341114e-27,
         "wilcoxon_p": 1.7051415145988684e-06
+      },
+      "rrl_combined_ctx_verified_vs_query_memory_robust": {
+        "mean_diff": 0.35625,
+        "ci95": [
+          0.32431533355913916,
+          0.38818466644086086
+        ],
+        "wins": 30,
+        "losses": 0,
+        "ties": 0,
+        "t_test_p": 4.4933210449479715e-20,
+        "wilcoxon_p": 1.7051415145988684e-06
+      },
+      "query_memory_robust_vs_query_memory": {
+        "mean_diff": -1.0,
+        "ci95": [
+          -1.0,
+          -1.0
+        ],
+        "wins": 0,
+        "losses": 30,
+        "ties": 0,
+        "t_test_p": 0.0,
+        "wilcoxon_p": 4.3204630578274876e-08
       },
       "rrl_combined_ctx_verified_vs_memrl_q": {
         "mean_diff": -0.3223958333333333,

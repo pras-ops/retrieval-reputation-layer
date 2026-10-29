@@ -1,8 +1,26 @@
-# RRL Feedback Layer (Retrieval Reputation Layer) Roadmap
+# RRL Roadmap
 
-This document outlines the roadmap for transitioning from core mathematical validation in simulation to a production-ready API and deployment model.
+RRL is now a research project on **verifier-anchored tool selection** (see [PAPER.md](PAPER.md)),
+with the original engineering plan below kept for deployment work.
 
----
+## Research track (current)
+
+| Step | Goal | Status |
+|---|---|---|
+| R1 | Leak-free, replayable benchmarks with fair baselines (Gates F, G, T, W, M) | Done |
+| R2 | Source trust (two-coin, per item), change detection, per-context counters, verified memory | Done |
+| R3 | Robust per-context memory baseline | Done |
+| R4 | MemRL's official code under identical conditions | Next |
+| R5 | MCPTox and MCPEvol-Bench, unmodified, with Tool-Guard as a security baseline | Next |
+| R6 | Source-trust validation under biased audits and correlated sources | Next |
+| R7 | Change detection that is both fast and quiet (recovery delay, gradual drift) | Next |
+| R8 | Write the paper; arXiv preprint; archived release with a DOI | After R4–R5 |
+
+## Engineering track (original plan)
+
+Phases 1–4 are implemented (core math, noise handling, real retrieval, SQLite persistence with
+atomic updates and a FastAPI service). Phases 5–6 (real feedback wiring, shadow mode,
+observability, A/B harness, deployment) are not.
 
 ## Phase 1 — Core math, validated
 
