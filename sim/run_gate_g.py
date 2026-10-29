@@ -58,10 +58,10 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from run_gate_matrix import (
     NO_DOC,
-    POLICIES,
     RESULTS_DIR,
     PoolBuilder,
     _strip_code,
+    enable_ablation,
     load_models,
     plot,
     print_report,
@@ -573,19 +573,23 @@ def heldout_report(per_seed: dict, seeds: List[int], n_heldout: int) -> dict:
     """Pass rate on the final held-out block, with paired comparisons."""
     from run_gate_matrix import mean_ci, paired
 
-    rates = {p: [sum(per_seed[s][p][-n_heldout:]) / n_heldout for s in seeds] for p in POLICIES}
+    names = list(per_seed[seeds[0]])
+    rates = {p: [sum(per_seed[s][p][-n_heldout:]) / n_heldout for s in seeds] for p in names}
     pairs = {
         "rrl_combined_vs_static_ce": ("static_ce", "rrl_combined"),
         "rrl_combined_vs_query_memory": ("query_memory", "rrl_combined"),
         "rrl_combined_vs_memrl_q": ("memrl_q", "rrl_combined"),
         "rrl_combined_vs_rrl_ce": ("rrl_ce", "rrl_combined"),
+        "rrl_combined_ctx_vs_static_ce": ("static_ce", "rrl_combined_ctx"),
+        "rrl_combined_ctx_vs_query_memory": ("query_memory", "rrl_combined_ctx"),
+        "rrl_combined_ctx_vs_memrl_q": ("memrl_q", "rrl_combined_ctx"),
     }
     out = {
         "pass_rate": {p: mean_ci(v) for p, v in rates.items()},
         "comparisons": {k: paired(rates[a], rates[b]) for k, (a, b) in pairs.items()},
     }
     print(f"\nHeld-out questions (final block of {n_heldout}, never seen before):")
-    for p in POLICIES:
+    for p in names:
         m, lo, hi = out["pass_rate"][p]
         print(f"  {p:<14} {m:.3f} [{lo:.3f}, {hi:.3f}]")
     for k, c in out["comparisons"].items():
@@ -649,8 +653,11 @@ def main() -> None:
     ap.add_argument("--epochs", type=int, default=4)
     ap.add_argument("--scenario", default="all", choices=sorted(SCENARIOS) + ["all"])
     ap.add_argument("--variant", default="easy", choices=sorted(VARIANTS))
+    ap.add_argument("--ablation", action="store_true", help="also replay the RRL ablations")
     args = ap.parse_args()
     set_variant(args.variant)
+    if args.ablation:
+        enable_ablation()
 
     if args.selftest:
         selftest()
@@ -705,7 +712,7 @@ def main() -> None:
                     "pool_composition": comp,
                     "seeds": seeds,
                     "epochs": args.epochs,
-                    "policies": POLICIES,
+                    "policies": list(per_seed[seeds[0]]),
                     **summary,
                 },
                 f,

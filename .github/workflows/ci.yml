@@ -49,3 +49,9 @@ jobs:
 
       - name: Run private-API gate self-test (smoke test)
         run: python3 sim/run_gate_g.py --selftest
+
+      - name: Run tool-selection gate self-test (smoke test)
+        run: python3 sim/run_gate_t.py --selftest
+
+      - name: Run web-scraping gate self-test (smoke test)
+        run: python3 sim/run_gate_w.py --selftest

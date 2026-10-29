@@ -143,7 +143,7 @@ class Retriever:
         all_cids = set(vector_scores.keys()).union(set(bm25_scores.keys()))
         rrf_scores = {}
 
-        for cid in all_cids:
+        for cid in sorted(all_cids):  # sorted: ties must not depend on hash order
             v_rank = vector_ranks.get(cid, len(sorted_vector) + 1)
             b_rank = bm25_ranks.get(cid, len(sorted_bm25) + 1)
 

@@ -47,6 +47,25 @@ All notable changes to this project are documented here. The format is based on
   to unseen questions. Separate pools, outcome table and results files (`*_hard`).
 - Gate F candidate pools are frozen to `data/gate_f_pools_*.json`, and the embedder and reranker
   run on CPU, so pools no longer vary with GPU numerics.
+- **Gate T** (`sim/run_gate_t.py`): agent tool selection on real ToolRet requests and tool
+  descriptions (ToolBench and ToolLens), with tool updates, poisoned tool twins, flaky tools and
+  held-out requests. `--build` downloads ToolRet into `data/gate_t/raw/` (git-ignored; ToolRet
+  states no license); only derived ids, scores and labels are committed.
+- **Gate W** (`sim/run_gate_w.py`): web-scraping extractor selection with 8 executable extractors
+  on 30 generated shops, site redesigns, held-out sites, and feedback produced by the tools
+  themselves (self-reports, a schema validator, spot checks).
+- `--ablation` on Gates F, G, T and W replays RRL variants with one component changed
+  (global-only reliability, no or old change detection, long-term reset, exploration 0.10/0).
+  Change-detector resets per run are reported.
+- Policy `rrl_combined_ctx`: per-request (or per-site) counters shrunk toward each item's global
+  counters.
+- `run_policies` accepts `scenario["signals_fn"]` for benchmarks whose feedback comes from the
+  tools rather than a simulated user.
+- `sim/summarize_results.py` prints the RESULTS.md tables from `sim/results/*.json`.
+- `ChangeDetector.resets` and `ChangeDetector(reset_long_term=True)`; `ChangeDetector.check()`
+  takes a cluster id and then checks that cluster's own counters.
+- `ReputationLayer(cluster_strength=...)`.
+- `pandas` and `pyarrow` in the `dev` extra, for Gate T's build step.
 
 ### Fixed
 - The default exploration weight in `ReputationLayer` and `Retriever` was `0.0`, so the
@@ -54,8 +73,26 @@ All notable changes to this project are documented here. The format is based on
   weights. Defaults are now `(0.55, 0.30, 0.15, 0.10)` and `(0.70, 0.20, 0.10, 0.10)`. Callers
   that pass explicit weights are unaffected.
 - `RESULTS.md` named `gemini-2.5-pro`; the harness calls `gemini-2.5-flash`.
+- `Retriever` broke ties in fused scores in hash order, so candidate rankings could differ
+  between runs of the same code. Ties are now broken by candidate id.
 
 ### Changed
+- `SourceReliability` is now a two-coin model: it learns each source's sensitivity and
+  specificity against the verifier instead of its agreement rate, so a source that always says
+  "worked" carries no weight even when most outcomes succeed. Unverified signals combine as the
+  verifier's base rate plus each source's log-likelihood ratio. `doc_strength=None` keeps only
+  global rates.
+- `ChangeDetector` now defaults to a two-proportion z-test over two windows of 8 outcomes
+  (α = 0.01), which avoids most false resets when an item's results vary by context. The
+  original rule is `ChangeDetector(window=4, threshold=0.6)`.
+- Cluster (per-context) counters are blended with the global ones by their own evidence,
+  `n / (n + cluster_strength)` with `n = α_c + β_c − 2`, instead of `min(1, (A_c + B_c − 2) / 10)`,
+  which used the slow long-term counters and left clusters almost unused.
+- Gates A and B and the robustness ablation were re-run with the current code and their plots
+  regenerated; Gate B's post-shift numbers are now 0.488 (decay off) vs 0.709 (decay on), the
+  same conclusion as before.
+- README and RESULTS.md describe the current formula, benchmarks and results; RESULTS.md now
+  opens with Gates T, W and G and their ablations.
 - `RESULTS.md` and the README now flag Gate E's answer-key leak and the fact that its RRL arm
   cannot be replayed from the committed cache.
 - `RESULTS.md` and the Gate E entry in the README now state the realistic MBPP benchmark at the

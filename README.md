@@ -8,15 +8,20 @@
 > **RRL** = **R**etrieval **R**eputation **L**ayer. *Not* to be confused with Cache-Augmented
 > Generation ("CAG"); RRL is a ranking-time reputation layer, not a retrieval-free method.
 
-RRL is **not a retriever.** It is a lightweight **reputation layer that sits on top of any
-retriever and converts verified downstream outcomes into a ranking signal** — boosting
-documents that have *actually produced good results* and decaying ones that go stale. It is
-built around per-document Beta counters updated from feedback (verifier, user behavior, LLM
-judge, thumbs), with explicit safeguards against noisy and sycophantic feedback.
+RRL is **not a retriever.** It is a lightweight, training-free **selection layer that sits on
+top of any retriever or tool registry and turns verified outcomes into a ranking signal**: it
+learns which documents or tools *actually worked*, shares that across related requests, trusts
+other feedback (users, LLM judges, a tool's own success report) only as far as a verifier has
+confirmed it — per document or tool — and resets an item's reputation when its results change.
 
-The novelty is **not** finding relevant documents (rerankers already do that well). It is
-folding **verified historical usefulness** into ranking, while handling staleness and noisy
-feedback.
+It was first built to make a web-scraping agent learn which extractor works on which site, and
+is now evaluated on agent **tool / MCP selection** (Gate T, real ToolRet tool descriptions) and
+**web-scraping tool selection** (Gate W, executable extractors), alongside RAG benchmarks.
+
+The ranking rule (similarity + learned usefulness) overlaps with MemRL (arXiv 2601.03192). What
+RRL adds is **verifier-anchored, per-item trust in feedback** and **change detection** — the
+parts that matter when feedback can be fooled (poisoned tools, self-reporting scrapers) and
+when tools change.
 
 > **What it is:** a reputation / usefulness-and-freshness layer for closed-loop retrieval.
 > **What it is not:** a better retriever, or a truth detector. It adds no value where queries
@@ -48,7 +53,9 @@ converge).
 
 | Use case | Fit | Why |
 |---|---|---|
-| **Coding agents with *recurring* tasks** (reused fix patterns / snippets) | **Strongest** | Hard verifier (tests) **+ recurring problem families** → reputation converges |
+| **Agent tool / MCP selection** | **Strongest** | Tools are reused across requests, calls can be verified, tools change and their descriptions or reports can be poisoned (Gate T) |
+| **Web-scraping extractor selection** | **Strongest** | Same tools across many sites, spot-checkable output, sites redesign, extractors over-report success (Gate W) |
+| **Coding agents with *recurring* tasks** (reused fix patterns / snippets) | Strong | Hard verifier (tests) **+ recurring problem families** → reputation converges |
 | **Enterprise RAG over trusted docs** | Strong | Recurring question types + controlled source; decay handles *staleness* |
 | **Internal tools / agents over controlled data** | Strong | Same logic as above |
 | **One-shot / non-recurring retrieval** | **No value** | Nothing to accumulate — a strong reranker wins (Gate C boundary) |
@@ -85,6 +92,8 @@ converge).
 | `rrl/store_sqlite.py` | Persistent store: durable, **lazy decay**, **atomic increments**, `pending` (retrieve↔feedback bridge), schema migration |
 | `rrl/retriever.py` | Optional bundled retriever: hybrid retrieval (SentenceTransformer + custom BM25, RRF-fused), delegating scoring to `ReputationLayer` |
 | `rrl/feedback.py` | Outcome aggregation `y`, soft κ-weighted update, liar counter, robust estimators, optional ADT denoising |
+| `rrl/reliability.py` | **`SourceReliability`** (opt-in): each feedback source's sensitivity and specificity against the verifier, globally and per document; combines unverified signals |
+| `rrl/drift.py` | **`ChangeDetector`** (opt-in): two-window z-test on recent outcomes; resets a document's (or a context's) counters on a change |
 | `rrl/judge.py` | LLM faithfulness judge (Gemini) with a token-overlap fallback when offline |
 | `rrl/ingest.py` | Document chunking + embedding into candidates |
 | `rrl/api.py` | FastAPI service: `POST /retrieve`, `POST /feedback`, `GET /health` |
@@ -127,6 +136,27 @@ res = layer.rescore({"doc1": 0.9, "doc2": 0.4}, top_k=2)
 
 # 2. Record downstream feedback (behavior, ground-truth tests, judge, etc.)
 layer.record_feedback(res.response_id, s_behave=0.75, s_gt=1.0)
+```
+
+The full configuration used in the benchmarks adds verifier-anchored source trust, change
+detection and per-context reputation:
+
+```python
+from rrl import ChangeDetector, SourceReliability
+
+layer = ReputationLayer(
+    store,
+    gamma=1.0,                              # no time decay; changes are detected instead
+    reliability=SourceReliability(),        # trust users / judges / self-reports per item
+    change_detector=ChangeDetector(),       # reset an item when its results shift
+)
+res = layer.rescore(
+    {"jsonld_extractor": 0.8, "universal_extractor": 0.9},   # relevance, e.g. reranker-blended
+    top_k=1,
+    cluster_id="site:shop.example",         # optional: learn per context, shrunk to global
+)
+# Verified when a spot check ran; otherwise only the trusted sources move the counters.
+layer.record_feedback(res.response_id, s_behave=1.0, s_judge=1.0, s_gt=None)
 ```
 
 
@@ -195,8 +225,14 @@ score(i) = w_sim·sim(i) + w_c·C_robust(i) + w_p·P(i)         # exploitation
 - Exploration is **scaled by `sim`** so it never surfaces wholly irrelevant docs.
 
 **Outcome.** Feedback signals are aggregated into `y ∈ [0,1]`. If a verifier `s_gt` is present
-it overrides (it's the one signal that can't be faked); otherwise a weighted mean of
-`s_behave (0.45)`, `s_gt (0.30)`, `s_judge (0.15)`, `s_expl (0.10)`, renormalized over present signals.
+it overrides (it's the one signal that can't be faked). Otherwise:
+- **default:** a weighted mean of `s_behave (0.45)`, `s_gt (0.30)`, `s_judge (0.15)`,
+  `s_expl (0.10)`, renormalized over present signals, with the behavioral cap and liar counter;
+- **with `SourceReliability`:** each source is a two-coin annotator (Dawid & Skene 1979) whose
+  sensitivity and specificity are learned against the verifier, globally and per document
+  (shrunk toward global). `y = σ(logit(base rate) + Σ log-likelihood ratios)`. A source that
+  cannot tell success from failure — e.g. one that always says "worked" — carries no weight, and
+  if no present source carries any, the update is skipped.
 
 **Update.** Decisiveness `κ = 2·|y−0.5|`; credit share `r(i)` from similarity (smoothed);
 `α += κ·r·y`, `β += κ·r·(1−y)` (permanent A/B at a 0.25 rate). An ambiguous outcome (`y≈0.5`)
@@ -204,6 +240,19 @@ barely moves the counters; a decisive one moves them fully.
 
 **Decay.** `x ← 1 + (x−1)·γ^Δt` pulls stale counters back toward the prior, computed lazily
 from `last_updated` (no cron sweep).
+
+**Change detection** (`ChangeDetector`, opt-in). A two-proportion z-test (α = 0.01) on the last
+two windows of 8 outcomes; on a change the short-term counters are rebuilt from the recent
+window. A fixed threshold (`threshold=0.6`, window 4) is still available; it detects faster but
+resets often when an item's results vary by context. Benchmarks report resets per run.
+
+**Per-context reputation** (`cluster_id`). Counters are also kept per context (a site, a
+request type) and blended with the item's global counters with weight `n / (n + 4)`, where `n` is
+the context's evidence: a new context starts from the global reputation, and its own outcomes
+take over as they accumulate.
+
+**Exploration weight.** The library default is `w_explore = 0.10`. The benchmarks use the Gate E
+configuration `(0.20, 0.40, 0.10, 0.30)`; the ablations show 0.10 is equal or better there.
 
 ---
 
@@ -234,6 +283,23 @@ can recover truth (information-theoretic). Robust estimator modes are selectable
 
 Reported honestly — what the tests/sims actually establish, and what they don't.
 
+### Current benchmarks (Gates T, W, G, F) — full tables in [RESULTS.md](RESULTS.md)
+
+All replay offline from committed data, 30 seeds, paired statistics, with ablations
+(`--ablation`) of every RRL component.
+
+| Gate | What it tests | Headline |
+|---|---|---|
+| **T** — tool selection (`sim/run_gate_t.py`) | Real ToolRet requests and tool descriptions; tool updates, poisoned twins, flaky tools, held-out requests | Learning beats the static reranker (≈30% → 41–59%). **Beats MemRL-style when feedback is fooled by poisoned tools** (+3 to +11 points, 30/30 seeds); behind it by 2–4 points on honest or randomly noisy feedback at exploration 0.30, about level at 0.10 |
+| **W** — web-scraping tools (`sim/run_gate_w.py`) | 8 executable extractors on 30 generated shops; tools' own success reports; redesigns; held-out sites | Reranker and MemRL-style are fooled by a "universal" extractor (0–1%); **RRL 39–59%, per-context RRL best everywhere**; per-item reliability worth 8–9 points with spot checks |
+| **G** — private-API docs (`sim/run_gate_g.py`) | Real Gemini code against a generated library; poisoned guides; API switch | Wins when users trust the poisoned guide (+4.9); **loses to MemRL-style under an API switch** (−8 to −18), where the new change detector is slow |
+| **F** — MBPP, leak-free (`sim/run_gate_matrix.py`) | Gate E without the answer leak, replayable | Retrieval barely changes the outcome here (6 complete seeds); 30-seed table in progress |
+
+**Change detection is a trade-off:** the default z-test detector avoids false resets (Gate W),
+the original fast detector (`ChangeDetector(window=4, threshold=0.6)`) adapts faster to abrupt
+changes (Gate G). **Exploration:** prefer the library default 0.10 over the 0.30 used in the
+benchmark configuration.
+
 ### Validated ✅ — under recurrence + a verifier
 - **Persistence layer** (`tests/test_store_sqlite.py`): durability across reconnect, lazy
   decay math, **atomic concurrent increments** (8 threads × 200, zero lost updates), and the
@@ -251,9 +317,9 @@ Reported honestly — what the tests/sims actually establish, and what they don'
   
   ![Gate A Comparison](sim/gate_a_comparison.png)
 - **Gate B — decay helps adaptation** (`sim/run_gate_b.py`, **30-seed**): ground truth flips at
-  step 50. Post-shift correctness: decay-OFF **0.417 [0.364, 0.469]** vs decay-ON
-  **0.730 [0.673, 0.787]** — **non-overlapping CIs** (at n=10 they overlapped; 30 seeds settle
-  it). Decay is what lets stale reputation fade.
+  step 50. Post-shift correctness (re-run with the current code): decay-OFF
+  **0.488 [0.457, 0.519]** vs decay-ON **0.709 [0.651, 0.768]** — **non-overlapping CIs**
+  (an earlier version reported 0.417 vs 0.730). Decay is what lets stale reputation fade.
   
   ![Gate B Comparison](sim/gate_b_comparison.png)
 - **Gate D — recurrence beats a strong reranker** (`sim/run_gate_d.py`): recurring-query
@@ -267,20 +333,6 @@ Reported honestly — what the tests/sims actually establish, and what they don'
 
   ![Gate E Comparison](sim/gate_recurring_comparison.png)
 
-- **Gate G — private-API documents** (`sim/run_gate_g.py`, 30 seeds, real Gemini generation and
-  execution against a generated library whose API changes mid-stream). The combined score
-  (reranker input + source reliability + change detection) beats a static reranker by **+20.8
-  points under an API change** and MemRL-style learning in four of five scenarios, and each added
-  component helps significantly in the scenario it targets. It still **loses to a simple
-  "reranker + move on when it fails" memory** (−4 to −7 points) and pays a small exploration cost
-  when nothing changes. Full tables and limits in [RESULTS.md](RESULTS.md).
-- **Gate G hard** (`--variant hard`): poisoned guides that fool the reranker on 79 of 80 poisoned
-  questions, and 40 held-out questions. Learning per-document usefulness transfers: on held-out
-  questions the combined score reaches 74–100% vs 0–50% for the reranker and the per-question
-  memory. Against a MemRL-style baseline it **wins when users are fooled by the poisoned guides**
-  (+5.6 points, 27/30 seeds), ties in most scenarios, and **loses under drift + random sycophancy**
-  (−11 points). Details and ablations in [RESULTS.md](RESULTS.md).
-
 ### Boundary condition ⛔ — stated, not hidden
 - **Gate C — no recurrence → a strong reranker wins** (`sim/run_gate_c.py`): one-shot HumanEval
   (50 distinct problems, ~1 visit each), **real Gemini generation**, **real unit-test verifier**.
@@ -292,14 +344,14 @@ Reported honestly — what the tests/sims actually establish, and what they don'
   ![Gate C Comparison](sim/gate_c_comparison.png)
 
 ### NOT yet validated ⚠️ (the important part)
-- **No-verifier case — UNPROVEN.** Every gate above uses a hard verifier. Behavior on purely
-  behavioral/judge feedback (no `s_gt`) is bounded by the robustness limits below.
-- **Query-conditional clustering — EXPERIMENTAL.** The "reputation per query-kind" variant
-  exists in code but adds only ~1 pt over global counters and is **not validated** (cluster
-  stability / fragmentation / sparse-shrinkage). Treated as **future work**; every validated
-  result above uses global counters.
-- **Real-traffic degeneracy** (popularity-bias amplification): the exploration defense is
-  implemented but **not yet monitored**.
+- **Live tools.** No gate calls real APIs or MCP servers: Gate T uses ToolRet's gold labels,
+  Gate W generated pages. A study on live MCP environments (MCPEvol-Bench, MCPTox) is next.
+- **Without any verifier.** Gates use a verifier on 20–100% of steps. With none, source
+  reliability has nothing to learn from and RRL skips unverified feedback.
+- **Per-context reputation** helps when usefulness depends on a recurring context (Gate W) but
+  not when every request is new; automatic clustering of contexts is not evaluated.
+- **Natural corpora and real MemRL code**: only a MemRL-style reimplementation on RRL's gates.
+- **Real-traffic degeneracy** (popularity-bias amplification): not yet monitored.
 
 ---
 
@@ -313,9 +365,10 @@ Reported honestly — what the tests/sims actually establish, and what they don'
   settings.
 - **Exploration cost.** Exploration improves discovery but can evict correct results from a
   small top-k; tune `epsilon`/`explore` to your top-k.
-- **Not novel research.** This is a clean implementation of established ideas (online
-  learning-to-rank with bandit feedback, Beta-Bernoulli reliability, recsys denoising). The
-  intended value is a tidy, honestly-evaluated, drop-in layer — not a new algorithm.
+- **Mostly established ideas.** Beta reputation, bandit exploration, Dawid–Skene source
+  reliability and window-based change detection are all known; the ranking rule overlaps with
+  MemRL. What is specific to RRL is combining verifier-anchored, per-item trust with
+  outcome-driven selection, and evaluating where that helps and where it does not.
 
 ---
 
@@ -326,12 +379,16 @@ rrl/                  core library (layer, store, retriever, feedback, judge, in
 sim/                  gates: verify_robustness.py, run_gate_a.py (value), run_gate_b.py (decay),
                       run_gate_c.py (no-recurrence boundary), run_gate_d.py (synthetic recurrence),
                       run_gate_recurring.py (Gate E, superseded), run_gate_matrix.py (Gate F,
-                      leak-free MBPP replay), run_gate_g.py (Gate G, private-API docs),
-                      plot_gate_f_map.py (measured similarity-vs-usefulness map), gate_c_verifier.py
+                      leak-free MBPP replay; shared policies and statistics), run_gate_g.py
+                      (Gate G, private-API docs), run_gate_t.py (Gate T, tool selection on
+                      ToolRet), run_gate_w.py (Gate W, web-scraping tools), summarize_results.py,
+                      plot_gate_f_map.py (similarity-vs-usefulness map), gate_c_verifier.py
 data/                 HumanEval.jsonl (164 problems, OpenAI · MIT) and mbpp.jsonl (974 problems,
                       Google MBPP · CC-BY-4.0) — real unit-test verifier substrates;
                       matrix_outcomes_*.jsonl + gate_f_pools_*.json (Gate F outcome tables, pools);
-                      gate_g/ (generated zyn library v1/v2, pools, outcome table)
+                      gate_g/ (generated zyn library v1/v2, pools, outcome tables);
+                      gate_t/ (ToolRet-derived ids, scores and labels; raw data is downloaded by
+                      --build, not committed — ToolRet states no license)
 tests/                test_feedback.py, test_store_sqlite.py, test_robustness.py, test_api.py,
                       test_layer.py, test_reliability.py, ...
 ROADMAP.md            phased build plan
@@ -351,6 +408,11 @@ python3 sim/run_gate_matrix.py --selftest                # Gate F: offline plumb
 python3 sim/run_gate_matrix.py --generator gemini --scenario all   # Gate F replay (table in data/)
 python3 sim/run_gate_g.py --selftest                     # Gate G: library + docs + replay check
 python3 sim/run_gate_g.py --scenario all                 # Gate G replay (table in data/gate_g/)
+python3 sim/run_gate_g.py --variant hard --scenario all --ablation
+python3 sim/run_gate_t.py --scenario all --ablation        # Gate T replay (data/gate_t/)
+python3 sim/run_gate_t.py --build                         # re-download ToolRet, rebuild pools
+python3 sim/run_gate_w.py --scenario all --ablation        # Gate W (fully offline)
+python3 sim/summarize_results.py                         # result tables for RESULTS.md
 ```
 
 Gate F and Gate G build their outcome tables once with `--build` (Gemini calls; needs
@@ -381,16 +443,17 @@ see [RELATED_WORK.md](RELATED_WORK.md) for the honest gap list.
 
 ## Future work
 
-1. **Query-conditional reputation (clustering).** Learn "what worked *for this kind of query*"
-   rather than globally. Implemented but **not validated** — needs evidence on cluster
-   stability, fragmentation, sparse-cluster shrinkage, and clustered-vs-global lift before it
-   is a claim rather than a proposal.
-2. **Strong-stack comparison.** *Strong Stack* vs *Strong Stack + RRL* (hybrid retrieval +
+1. **Live tool / MCP evaluation.** Run RRL as the tool-selection layer of an agent on live MCP
+   environments with real tool updates and poisoning (MCPEvol-Bench, MCPTox), and compare with
+   MemRL's own code.
+2. **Change detection that is both fast and quiet** — e.g. per-context detection or a CUSUM /
+   Page-Hinkley test — to close the gap to MemRL-style under abrupt changes.
+3. **Strong-stack comparison.** *Strong Stack* vs *Strong Stack + RRL* (hybrid retrieval +
    query rewriting + multi-query + agent memory), not just retriever-level. The eventual
    deployment-relevant test.
-3. **No-verifier validation** — behavior under purely behavioral/judge feedback (e.g.
+4. **No-verifier validation** — behavior under purely behavioral/judge feedback (e.g.
    cross-model agreement as a pseudo-verifier).
-4. **Degeneracy monitoring** (retrieval concentration / coverage) before any real deployment.
+5. **Degeneracy monitoring** (retrieval concentration / coverage) before any real deployment.
 
 See `ROADMAP.md` for the full plan.
 

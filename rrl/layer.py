@@ -39,17 +39,23 @@ class ReputationLayer:
         use_clustering: bool = False,
         reliability: Optional[SourceReliability] = None,
         change_detector: Optional[ChangeDetector] = None,
+        cluster_strength: float = 4.0,
     ):
         """
         reliability:     learn each feedback source's accuracy against the verifier and
                          combine unverified signals by it (see rrl/reliability.py). Feedback
                          from sources that have not earned any trust is then skipped.
         change_detector: reset a document's short-term counters when its recent outcomes
-                         shift abruptly (see rrl/drift.py).
+                         shift abruptly (see rrl/drift.py). With a cluster_id, the
+                         cluster's own counters are checked and reset.
+        cluster_strength: with a cluster_id, how much evidence the cluster's own counters
+                         need before they outweigh the document's global ones: the weight
+                         on the cluster is n / (n + cluster_strength), n = its evidence.
         """
         self.store = store
         self.reliability = reliability
         self.change_detector = change_detector
+        self.cluster_strength = cluster_strength
         self.weights = weights
         self.robust_estimator_mode = robust_estimator_mode
         self.use_optimistic_prior = use_optimistic_prior
@@ -164,11 +170,10 @@ class ReputationLayer:
                 beta_c = _decay(cc.get("beta", 1.0), decay_gamma, cc_dt)
                 A_c = cc.get("A", 1.0)
                 B_c = cc.get("B", 1.0)
-                n_cluster = max(0.0, A_c + B_c - 2.0)
+                n_cluster = max(0.0, alpha_c + beta_c - 2.0)
 
-            # Shrinkage interpolation (K_threshold = 10.0)
-            N_threshold = 10.0
-            lam = min(1.0, max(0.0, n_cluster / N_threshold))
+            # Shrink the cluster's counters toward the document's global ones.
+            lam = n_cluster / (n_cluster + self.cluster_strength) if n_cluster > 0 else 0.0
 
             alpha = (1.0 - lam) * alpha_global + lam * alpha_c
             beta = (1.0 - lam) * beta_global + lam * beta_c
@@ -277,6 +282,6 @@ class ReputationLayer:
         if self.change_detector is not None:
             for cid in shares:
                 candidate = self.store.get_candidate(cid)
-                if candidate is not None and self.change_detector.check(candidate):
+                if candidate is not None and self.change_detector.check(candidate, cluster_id):
                     self.store.update_candidate(candidate)
         return shares

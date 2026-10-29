@@ -1,141 +1,218 @@
-# Gate G (hard) — poisoned reranker, held-out questions (current)
+# Results
 
-`python3 sim/run_gate_g.py --variant hard --scenario all` replays
-`data/gate_g/outcomes_gemini-2.5-flash-t0.7-nothink_hard.jsonl` (1,920 Gemini 2.5 Flash cells).
-160 questions (20 concepts × 8 salts); 40 are held out and appear once, in a final block.
-Poisoned guides mirror their own concept's wording, and the cross-encoder ranks one first for
-79 of the 80 questions on poisoned concepts. 30 seeds; differences are paired over seeds.
+All numbers below come from the current code and replay offline from committed data:
 
-Feedback scenarios: *sycophantic* users accept 50% of answers at random; *fooled* users accept
-90% of answers built from a poisoned guide and are honest otherwise (errors that depend on the
-document). Both have the verifier on 20% of steps; *drift* switches zyn 1.4 → 2.0 halfway.
+```bash
+python3 sim/run_gate_t.py --scenario all --ablation        # Gate T (data/gate_t/, ToolRet-derived)
+python3 sim/run_gate_w.py --scenario all --ablation        # Gate W (generated offline)
+python3 sim/run_gate_g.py --variant hard --scenario all --ablation   # Gate G hard (data/gate_g/)
+python3 sim/run_gate_g.py --variant easy --scenario all --ablation   # Gate G easy
+python3 sim/summarize_results.py                           # prints the tables below
+```
 
-## Overall pass rate
+30 seeds per scenario; seeds vary the request order, feedback noise, flaky calls and exploration,
+and every comparison is paired over the same seeds. Per-seed and paired statistics (95% CIs,
+paired t-test, Wilcoxon) are in `sim/results/*.json`.
 
-| Policy | stationary | sparse verifier | sycophantic | fooled | drift | drift + sycophantic | drift + fooled |
-|---|---|---|---|---|---|---|---|
-| static cross-encoder | 50.8% | 50.8% | 50.8% | 50.8% | 23.5% | 23.5% | 23.5% |
-| reuse what worked | 83.7% | 83.7% | 75.6% | 63.4% | 51.3% | 38.7% | 39.6% |
-| MemRL-style | 96.1% | **96.3%** | 92.1% | 83.2% | **83.4%** | **70.7%** | 65.0% |
-| RRL + reranker input | 96.5% | 92.7% | 90.3% | 87.5% | 62.5% | 51.1% | 52.1% |
-| **RRL combined** | **96.5%** | 94.4% | 91.5% | **88.8%** | 80.6% | 59.7% | **65.2%** |
+**Policies.** *Static reranker*: cross-encoder top-1, no learning. *Reuse what worked*: per
+request, walk the reranker's order until something works, then keep it. *MemRL-style*:
+`(1−λ)·z(sim) + λ·z(Q)`, `Q ← Q + 0.3(r − Q)`, taking feedback at face value. *RRL combined*:
+reranker-blended relevance + Beta reputation + two-coin source reliability (per item) +
+statistical change detection, with the benchmark exploration weight 0.30. *Explore 0.10* is
+the same with the library's default exploration weight. *Per-context* adds counters per request
+(or per site in Gate W), shrunk toward each item's global counters.
 
-## Held-out questions (never seen before the final block)
+**Scenarios.** Verifier on every step (*stationary*), on 20% (*sparse verifier*, *spot check*),
+users accepting 50% of answers at random (*sycophantic*), users accepting 90% of answers built
+from a poisoned item (*fooled*), and a mid-stream change (*drift*: tool updates or an API
+switch; *redesign*: site theme changes). Gate W's feedback is produced by the tools themselves:
+each extractor's own success report and a schema validator, plus spot checks.
 
-| Policy | stationary | sparse verifier | sycophantic | fooled | drift | drift + sycophantic | drift + fooled |
-|---|---|---|---|---|---|---|---|
-| static cross-encoder | 50.0% | 50.0% | 50.0% | 50.0% | 0.0% | 0.0% | 0.0% |
-| reuse what worked | 50.0% | 50.0% | 50.0% | 50.0% | 0.0% | 0.0% | 0.0% |
-| MemRL-style | 100% | 100% | 99.8% | 96.0% | 98.1% | **90.1%** | 84.0% |
-| **RRL combined** | 100% | 100% | 99.8% | **98.9%** | 99.1% | 73.6% | 84.0% |
+## Summary
 
-## Ablation (overall / held-out; same seeds)
+1. **Learning which tools or documents work beats every non-learning baseline.** In Gate T the
+   static reranker solves about 30% of requests; RRL 41–59%; the best possible pick 85–90%.
+2. **Verifier-anchored trust is RRL's clear advantage.** When feedback is fooled by poisoned
+   items, RRL beats MemRL-style: Gate T +3.0 / +3.7 (ToolBench) and +10.9 / +9.6 (ToolLens)
+   points in *fooled* / *drift + fooled* (30/30 seeds each); Gate G hard +4.9 in *fooled* (28/30
+   seeds); and in Gate W, where extractors over-report success, MemRL-style collapses to about 1%
+   while RRL reaches 39–59% (30/30 seeds). The exception is Gate G hard *drift + fooled*, where
+   the slow change detector costs more than trust gains (−8.3; with the old detector, a tie).
+3. **Per-item reliability matters when sources fail on particular items.** In Gate W, where
+   only some extractors over-report success, global-only reliability loses 8–9 points with
+   spot checks. In Gate T and G it makes no difference.
+4. **Per-context reputation helps when usefulness depends on context** (Gate W: +2.8 to +7.6
+   points, best policy in every scenario) and does nothing or hurts when every request is new
+   (Gate T) or contexts are few-shot (Gate G).
+5. **Exploration weight 0.30 is too high.** The library default 0.10 is better in Gate T (+2 to
+   +4 points) and in all but one Gate G scenario, and about equal in W. With it RRL also matches or beats MemRL-style on honest feedback in Gate T
+   (ToolBench stationary 56.4 vs 55.2).
+6. **Change detection is a trade-off, not a free win.** The new z-test detector cut false resets
+   from about 20 to about 2 per run in Gate W (worth 5–7 points), but reacts later to a real API
+   change: in Gate G hard under drift the old fast detector is 7–9 points better. In Gate T it
+   rarely fires.
+7. **Where MemRL-style still wins:** drift with honest or randomly noisy feedback (Gate G hard:
+   −11.7 under *drift*, −18.3 under *drift + sycophantic*), and honest or randomly noisy feedback
+   in Gate T with the 0.30 exploration weight (−2 to −4; with 0.10 the gap mostly closes). A running
+   average that forgets quickly is hard to beat when feedback is not adversarial.
 
-| Variant | drift | drift + sycophantic | fooled | drift + fooled |
+## Gate T — agent tool selection on real tool descriptions (ToolRet)
+
+Requests and gold tools from ToolRet (ToolBench: 431 requests with a working tool in the top-8
+pool out of 600; ToolLens: 200 of 314). Added on top: 30% of gold tools get a v2 replacement
+(drift), 10% get a poisoned twin whose description copies example requests (the reranker picks
+a poisoned tool first for 39% / 56% of requests), 20% of tools fail half their calls, and 20% of
+requests are held out until a final block. Success = the chosen tool is a gold tool for the
+request, deployed and not flaking — ToolRet's label standing in for execution.
+
+### Gate T — tool selection, ToolBench (ToolRet)
+
+Overall / held-out pass rate (%), mean of 30 seeds.
+
+| Policy | stationary | sparse_verifier | sycophantic | fooled | drift | drift_fooled |
+|---|---|---|---|---|---|---|
+| static reranker | 31.4 / 33.0 | 31.4 / 33.0 | 31.4 / 33.0 | 31.4 / 33.0 | 30.5 / 30.3 | 30.5 / 30.3 |
+| reuse what worked | 46.0 / 33.0 | 46.0 / 33.0 | 40.9 / 33.0 | 39.6 / 33.0 | 41.0 / 30.3 | 34.9 / 30.3 |
+| MemRL-style | 55.2 / 45.0 | 54.8 / 44.8 | 49.3 / 42.1 | 41.2 / 32.1 | 50.9 / 42.5 | 37.7 / 30.9 |
+| RRL combined | 52.5 / 50.1 | 50.5 / 50.0 | 45.2 / 46.6 | 44.2 / 43.3 | 48.1 / 48.7 | 41.4 / 44.0 |
+| RRL combined, explore 0.10 | 56.4 / 51.9 | 54.5 / 52.0 | 47.6 / 49.8 | 47.0 / 46.8 | 51.0 / 51.6 | 43.5 / 45.6 |
+| RRL combined + per-context | 52.3 / 50.0 | 50.4 / 49.7 | 45.2 / 46.9 | 44.1 / 43.7 | 47.9 / 48.1 | 41.1 / 43.7 |
+| best possible | 89.9 / 89.4 | 89.9 / 89.4 | 89.9 / 89.4 | 89.9 / 89.4 | 88.6 / 87.1 | 88.6 / 87.1 |
+
+
+### Gate T — tool selection, ToolBench (ToolRet) — ablation
+
+Overall / held-out pass rate (%), mean of 30 seeds.
+
+| Policy | stationary | sparse_verifier | sycophantic | fooled | drift | drift_fooled |
+|---|---|---|---|---|---|---|
+| RRL, reranker input only | 52.5 / 50.1 | 47.2 / 47.2 | 44.9 / 43.0 | 43.9 / 43.1 | 48.1 / 48.7 | 40.9 / 42.6 |
+| combined, global-only reliability | 52.5 / 50.1 | 50.5 / 49.7 | 45.4 / 46.4 | 44.0 / 43.6 | 48.1 / 48.7 | 41.2 / 43.7 |
+| combined, no change detection | 52.5 / 50.1 | 50.5 / 50.0 | 45.2 / 46.6 | 44.2 / 43.3 | 48.1 / 48.7 | 41.4 / 44.0 |
+| combined, old detector (w=4, 0.6) | 52.5 / 50.1 | 50.5 / 50.0 | 45.2 / 46.6 | 44.2 / 43.3 | 48.1 / 48.7 | 41.4 / 44.0 |
+| combined, exploration off | 58.9 / 50.9 | 56.8 / 50.3 | 48.4 / 47.1 | 47.7 / 45.8 | 52.9 / 52.0 | 44.6 / 46.5 |
+
+
+### Gate T — tool selection, ToolLens (ToolRet)
+
+Overall / held-out pass rate (%), mean of 30 seeds.
+
+| Policy | stationary | sparse_verifier | sycophantic | fooled | drift | drift_fooled |
+|---|---|---|---|---|---|---|
+| static reranker | 29.1 / 32.2 | 29.1 / 32.2 | 29.1 / 32.2 | 29.1 / 32.2 | 26.5 / 25.2 | 26.5 / 25.2 |
+| reuse what worked | 42.9 / 32.2 | 42.9 / 32.2 | 38.1 / 32.2 | 34.2 / 32.2 | 36.2 / 25.2 | 29.3 / 25.2 |
+| MemRL-style | 55.0 / 56.8 | 54.3 / 56.7 | 51.0 / 56.6 | 35.3 / 41.7 | 52.2 / 55.7 | 32.0 / 33.2 |
+| RRL combined | 56.1 / 55.6 | 53.7 / 56.4 | 48.1 / 52.1 | 46.2 / 50.3 | 49.9 / 52.0 | 41.6 / 42.3 |
+| RRL combined, explore 0.10 | 59.1 / 60.3 | 55.8 / 58.4 | 50.6 / 54.6 | 48.5 / 52.8 | 52.2 / 53.1 | 43.6 / 42.3 |
+| RRL combined + per-context | 56.1 / 55.9 | 53.6 / 57.2 | 48.0 / 51.5 | 46.2 / 49.2 | 49.7 / 50.7 | 41.9 / 43.9 |
+| best possible | 85.1 / 81.1 | 85.1 / 81.1 | 85.1 / 81.1 | 85.1 / 81.1 | 84.7 / 83.2 | 84.7 / 83.2 |
+
+
+### Gate T — tool selection, ToolLens (ToolRet) — ablation
+
+Overall / held-out pass rate (%), mean of 30 seeds.
+
+| Policy | stationary | sparse_verifier | sycophantic | fooled | drift | drift_fooled |
+|---|---|---|---|---|---|---|
+| RRL, reranker input only | 56.1 / 55.6 | 51.5 / 53.5 | 48.8 / 51.2 | 46.6 / 51.0 | 49.6 / 50.8 | 42.0 / 45.2 |
+| combined, global-only reliability | 56.1 / 55.6 | 53.8 / 56.4 | 48.1 / 52.2 | 46.2 / 50.1 | 49.9 / 52.0 | 41.8 / 42.3 |
+| combined, no change detection | 56.1 / 55.6 | 53.7 / 56.4 | 48.1 / 52.1 | 46.2 / 50.3 | 49.6 / 50.8 | 41.5 / 41.8 |
+| combined, old detector (w=4, 0.6) | 56.0 / 55.2 | 53.7 / 56.3 | 48.1 / 52.2 | 46.2 / 50.3 | 50.3 / 51.5 | 41.8 / 43.2 |
+| combined, exploration off | 60.2 / 59.8 | 57.4 / 60.0 | 51.5 / 54.8 | 49.1 / 52.3 | 53.4 / 50.2 | 42.8 / 41.2 |
+
+
+## Gate W — web-scraping extractor selection (executable)
+
+30 generated shops (6 held out), 8 extractors running real parsing code. The registry's
+"universal AI extractor" matches every request best and the reranker picks it for all 30 sites;
+it returns well-formed guesses, so its self-report and the schema validator both say success.
+The *redesign* scenarios switch half the Shopify-like shops to a new theme halfway through.
+
+### Gate W — web-scraping extractor selection
+
+Overall / held-out pass rate (%), mean of 30 seeds.
+
+| Policy | stationary | spot_check | redesign | redesign_spot_check |
 |---|---|---|---|---|
-| RRL + reranker input | 62.5 / 77.1 | 51.1 / 52.0 | 87.5 / 97.9 | 52.1 / 68.4 |
-| + source reliability only | 62.5 / 77.1 | 47.7 / 41.9 | 88.8 / 98.9 | 53.5 / 67.8 |
-| + change detection only | 80.6 / 99.1 | 56.5 / 62.7 | 87.5 / 97.9 | 64.2 / 88.3 |
-| + both (RRL combined) | 80.6 / 99.1 | 59.7 / 73.6 | 88.8 / 98.9 | 65.2 / 84.0 |
-| both, exploration off | **85.8 / 100** | 57.7 / 60.5 | 88.3 / 96.6 | **65.6** / 77.3 |
-| MemRL-style | 83.4 / 98.1 | **70.7 / 90.1** | 83.2 / 96.0 | 65.0 / 84.0 |
+| static reranker | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 |
+| reuse what worked | 19.0 / 5.0 | 19.0 / 5.0 | 17.8 / 4.3 | 17.8 / 4.3 |
+| MemRL-style | 1.3 / 0.0 | 0.4 / 0.0 | 1.1 / 0.0 | 0.4 / 0.0 |
+| RRL combined | 51.4 / 68.9 | 46.4 / 72.9 | 45.5 / 53.5 | 39.4 / 54.0 |
+| RRL combined, explore 0.10 | 52.6 / 72.4 | 47.1 / 65.7 | 46.2 / 54.2 | 40.4 / 52.4 |
+| RRL combined + per-context | 59.0 / 80.3 | 50.5 / 79.4 | 51.3 / 65.0 | 42.2 / 58.5 |
+| best possible | 87.9 / 96.4 | 87.9 / 96.4 | 87.9 / 96.4 | 87.9 / 96.4 |
 
-(The ablation rows come from a one-off script over the same table, not from `run_gate_g.py`.)
 
-## What this says
+### Gate W — web-scraping extractor selection — ablation
 
-1. **Learning which documents work transfers to new questions.** On held-out questions the
-   combined score beats the static reranker and the per-question memory by +49 to +99 points in
-   every scenario (30/30 seeds).
-2. **When users are fooled by the poisoned guides, RRL beats MemRL-style**: +5.6 points overall
-   (27/30 seeds, p < 1e-6) and +2.9 on held-out questions (p = 0.0003). A learner that takes
-   feedback at face value ranks the poison up. Most of this margin comes from RRL's existing
-   safeguards (the verifier override, the per-document liar counter and the cap on positive
-   behavior); the per-document source reliability adds about one more point.
-3. **Change detection is the component that handles the library switch** (+18 points under
-   drift, +12 under drift + fooled). Source reliability alone does nothing there and slightly
-   hurts under random sycophancy.
-4. **Exploration is a cost here.** With Thompson exploration off, the combined score beats
-   MemRL-style under drift (85.8% vs 83.4%), but loses some held-out accuracy elsewhere.
-5. **The open weakness is drift + random sycophancy**, where MemRL-style wins by 11 points overall
-   and 16.5 on held-out questions (27–30/30 seeds). Its running average forgets quickly; RRL's
-   counters plus a change detector working from noisy outcomes recover more slowly. That is a
-   hypothesis from these numbers, not a tested explanation.
+Overall / held-out pass rate (%), mean of 30 seeds.
+
+| Policy | stationary | spot_check | redesign | redesign_spot_check |
+|---|---|---|---|---|
+| RRL, reranker input only | 53.9 / 78.2 | 47.3 / 74.3 | 48.0 / 64.9 | 40.2 / 59.6 |
+| combined, global-only reliability | 51.4 / 68.9 | 38.3 / 57.8 | 45.5 / 53.5 | 30.2 / 29.2 |
+| combined, no change detection | 53.9 / 78.2 | 47.5 / 75.8 | 48.0 / 64.9 | 40.4 / 59.0 |
+| combined, old detector (w=4, 0.6) | 44.6 / 60.3 | 40.9 / 59.9 | 39.7 / 39.4 | 34.6 / 31.8 |
+| combined, exploration off | 51.7 / 66.0 | 45.8 / 58.6 | 45.2 / 49.3 | 38.6 / 39.7 |
+
+
+Change-detector resets per run (stationary): old detector 23.0, new detector 1.9.
+
+## Gate G hard — private-API documents with a poisoned reranker
+
+Gemini 2.5 Flash writes code against a generated library (`zyn`) whose docs are the only way to
+solve the task; poisoned guides fool the reranker on 79 of 80 poisoned questions; 40 questions
+are held out; *drift* switches zyn 1.4 → 2.0 halfway.
+
+### Gate G hard — private-API docs, poisoned reranker
+
+Overall / held-out pass rate (%), mean of 30 seeds.
+
+| Policy | stationary | sycophantic | fooled | drift | drift_sycophantic | drift_fooled |
+|---|---|---|---|---|---|---|
+| static reranker | 50.8 / 50.0 | 50.8 / 50.0 | 50.8 / 50.0 | 23.5 / 0.0 | 23.5 / 0.0 | 23.5 / 0.0 |
+| reuse what worked | 83.7 / 50.0 | 75.6 / 50.0 | 63.4 / 50.0 | 51.3 / 0.0 | 38.7 / 0.0 | 39.6 / 0.0 |
+| MemRL-style | 96.1 / 100.0 | 92.1 / 99.8 | 83.2 / 96.0 | 83.4 / 98.1 | 70.7 / 90.1 | 65.0 / 84.0 |
+| RRL combined | 96.5 / 100.0 | 90.2 / 99.8 | 88.0 / 98.8 | 71.7 / 96.7 | 52.4 / 65.2 | 56.7 / 75.7 |
+| RRL combined, explore 0.10 | 97.7 / 100.0 | 93.1 / 99.8 | 90.5 / 97.8 | 75.5 / 95.0 | 54.2 / 67.9 | 59.9 / 78.8 |
+| RRL combined + per-context | 96.5 / 100.0 | 89.9 / 99.8 | 87.5 / 99.2 | 61.3 / 76.0 | 48.4 / 51.6 | 52.9 / 70.2 |
+| best possible | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 |
+
+
+### Gate G hard — private-API docs, poisoned reranker — ablation
+
+Overall / held-out pass rate (%), mean of 30 seeds.
+
+| Policy | stationary | sycophantic | fooled | drift | drift_sycophantic | drift_fooled |
+|---|---|---|---|---|---|---|
+| RRL, reranker input only | 96.5 / 100.0 | 90.3 / 98.5 | 87.5 / 97.9 | 62.5 / 77.1 | 51.1 / 52.0 | 52.1 / 68.4 |
+| combined, global-only reliability | 96.5 / 100.0 | 90.0 / 99.6 | 87.7 / 98.5 | 71.7 / 96.7 | 52.1 / 66.9 | 56.3 / 75.3 |
+| combined, no change detection | 96.5 / 100.0 | 90.2 / 99.8 | 88.0 / 98.8 | 62.5 / 77.1 | 49.3 / 53.6 | 54.2 / 69.4 |
+| combined, old detector (w=4, 0.6) | 96.5 / 100.0 | 90.2 / 99.7 | 88.0 / 98.7 | 80.6 / 99.1 | 60.6 / 78.9 | 63.9 / 82.3 |
+| combined, exploration off | 97.7 / 100.0 | 89.9 / 97.3 | 88.2 / 95.8 | 76.8 / 100.0 | 50.6 / 58.3 | 56.1 / 72.6 |
+
+
+The easy variant (`--variant easy`, results in `sim/results/gate_g_*.json`) has a reranker that
+is always right before the switch; there RRL beats MemRL-style by about 19–22 points without
+drift and loses by 2–4 with it.
+
+## Gate F — MBPP, leak-free (in progress)
+
+On the 6 seeds whose Gemini outcomes were complete, retrieval barely mattered (the most and the
+least similar candidate pass at 59% and 58%; best possible 65.6%), so no ranking method has much
+to learn there. The 30-seed table is still being generated; results will be added when it is
+complete.
 
 ## Limits
 
-- Controlled synthetic corpus; one fixed corpus; the two samples per cell mostly agree.
-- MemRL-style is a reimplementation of MemRL's ranking rule on this benchmark, not MemRL itself.
-- The feedback models (uniform sycophancy, poison-specific trust) are simple stand-ins for real
-  user behavior.
-
----
-
-# Gate G — private-API documents (current)
-
-`sim/run_gate_g.py`, outcome table `data/gate_g/outcomes_gemini-2.5-flash-t0.7-nothink.jsonl`,
-30 seeds × 4 epochs × 80 questions (20 concepts × 4 salts), Gemini 2.5 Flash (temperature 0.7,
-thinking off, 2 samples per cell), real execution against `zyn` 1.4 / 2.0. Reproduce offline with
-`python3 sim/run_gate_g.py --scenario all`.
-
-## What the outcome table shows
-
-| Document given to the model | Pass under zyn 1.4 | Pass under zyn 2.0 |
-|---|---|---|
-| None | 38% | 3% |
-| The question's own 1.x doc | 100% | 0% |
-| The question's own 2.0 doc | 0% | 100% |
-| Any poisoned, sibling or other doc | 0% | 0% |
-
-The documents decide the outcome, unlike Gate F. But the cross-encoder ranks the question's own
-1.x doc first and its 2.0 doc second for all 80 questions, and the two samples per cell agree 94%
-of the time. So ranking is easy here; the hard parts are the library switch and noisy feedback.
-
-## Overall pass rate (mean over 30 seeds)
-
-| Policy | stationary | sparse verifier | sycophantic | drift | drift + sycophantic |
-|---|---|---|---|---|---|
-| no retrieval | 37.8% | 37.8% | 37.8% | 20.6% | 20.6% |
-| static cross-encoder | **100%** | **100%** | **100%** | 50.0% | 50.0% |
-| reuse what worked (`query_memory`) | **100%** | **100%** | **100%** | **75.0%** | **64.5%** |
-| MemRL-style | 76.7% | 74.9% | 70.5% | 63.5% | 56.3% |
-| RRL, Gate E config (`rrl`) | 55.2% | 55.0% | 44.0% | 28.9% | 31.0% |
-| RRL + reranker input (`rrl_ce`) | 96.1% | 91.6% | 89.6% | 59.3% | 51.8% |
-| RRL combined (`rrl_combined`) | 96.1% | 94.1% | 92.9% | 70.8% | 57.7% |
-| RRL per-question (`rrl_query`) | 61.8% | 59.0% | 49.4% | 32.5% | 31.5% |
-
-## Paired differences (30 seeds; all p < 1e-5 unless marked)
-
-- **Each component of the combined score helps where it is meant to.** Adding the reranker as an
-  input: +40 points stationary, +16 drift. Adding source reliability and change detection on top:
-  +11.5 drift, +5.9 drift + sycophantic, +3.3 sycophantic, +2.6 sparse verifier, 0 stationary.
-- **Combined vs static reranker:** +20.8 points under drift, +7.7 under drift + sycophantic;
-  −3.9 to −7.1 points when nothing changes (the cost of exploring when the ranking is right).
-- **Combined vs MemRL-style:** +7 to +22 points in four scenarios; +1.4 under drift + sycophantic
-  (p = 0.07, not significant).
-- **Combined vs reuse-what-worked:** −3.9 to −7.1 points in every scenario. The simple memory
-  wins overall.
-- **Transfer after the switch.** In the first epoch after zyn 2.0 lands, every question is seen
-  once, so reuse-what-worked fails all of them (0%); the combined score carries the lesson across
-  a concept's four questions and reaches 17% (+16.8 points, 30/30 seeds). MemRL-style reaches 37%.
-
-## What this says
-
-1. Global per-document reputation alone (Gate E config) is worse than not learning: a sibling
-   doc that is right for "ember rank" earns a good reputation and is then picked for "ember score".
-   The reranker input fixes most of this.
-2. Source reliability and change detection are worth keeping: they are the only additions that
-   help under noisy feedback and drift, and they cost nothing when the world is stable.
-3. RRL still loses to "reranker + move on when it fails" because Thompson exploration keeps
-   paying a cost when the reranker is already right, and per-question learning gets only four
-   visits per question here.
-
-## Limits of this benchmark
-
-- The reranker is perfect before the switch and its second choice is perfect after it, which
-  favors `query_memory`. Poisoned guides never outranked the real docs, so poisoned *documents*
-  were not stressed; poisoned *feedback* was.
-- Controlled synthetic corpus (one fixed corpus; seeds vary order, samples and exploration).
+- **No live tool calls.** Gate T judges a choice by ToolRet's gold labels; Gate W runs real
+  extraction code on generated pages; Gate G runs real code on a generated library.
+- **Synthetic stress.** Tool updates, poisoned twins, flaky tools, redesigns and the feedback
+  models are added on top of the data; their rates are choices, stated above.
+- **MemRL-style is a reimplementation** of MemRL's ranking rule, not MemRL's code.
+- **The benchmark exploration weight (0.30) predates these results**; the ablation favours the
+  library default (0.10). Both are reported rather than re-picking the main configuration after
+  seeing the results.
 
 ---
 

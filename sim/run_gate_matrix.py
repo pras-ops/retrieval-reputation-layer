@@ -35,6 +35,8 @@ Policies (all pick 1 of the same 5 candidates per step):
   rrl_ce         rrl_nodecay, with the cross-encoder rank blended into the similarity input
   rrl_combined   rrl_ce + feedback-source reliability (rrl/reliability.py) + change
                  detection (rrl/drift.py): the combined score
+  rrl_combined_ctx  rrl_combined with counters per request, shrunk toward each document's
+                 global counters (ReputationLayer cluster_id)
   rrl_query      query-level Beta counters shrunk toward the document's global reputation
                  (hierarchical / empirical-Bayes), Thompson sampling, reliability-weighted
                  feedback, reranker-blended similarity
@@ -97,9 +99,37 @@ POLICIES = [
     "rrl_nodecay",
     "rrl_ce",
     "rrl_combined",
+    "rrl_combined_ctx",
     "rrl_query",
     "oracle",
 ]
+
+# Ablations of rrl_combined, run with --ablation. Each is rrl_combined with one change.
+ABLATIONS = [
+    "rrl_combined_globalrel",  # source reliability without per-document rates
+    "rrl_combined_nocd",  # no change detection
+    "rrl_combined_cdlong",  # change detection also resets the long-term counters
+    "rrl_combined_cdold",  # the original detector: window 4, fixed 0.6 threshold
+    "rrl_combined_e10",  # exploration weight 0.10 (the library default)
+    "rrl_combined_e0",  # exploration off
+]
+
+# Weights used by every RRL variant in the benchmarks: (sim, recent, long-term, explore).
+# This is the Gate E configuration; ReputationLayer's library default is (0.55, 0.30, 0.15, 0.10).
+BENCH_WEIGHTS = (0.20, 0.40, 0.10, 0.30)
+
+# Policies replayed by run_policies(); --ablation appends ABLATIONS.
+RUN_POLICIES: List[str] = list(POLICIES)
+
+
+def enable_ablation() -> None:
+    for name in ABLATIONS:
+        if name not in RUN_POLICIES:
+            RUN_POLICIES.insert(RUN_POLICIES.index("oracle"), name)
+
+
+# Change-detector resets per (policy, seed), filled by the RRL policies during a replay.
+DIAGNOSTICS: Dict[str, Dict[int, int]] = defaultdict(dict)
 
 LEARNERS = [
     "query_memory",
@@ -439,34 +469,53 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
 
         return choose_mq, update_mq
 
-    if name in ("rrl", "rrl_nodecay", "rrl_ce", "rrl_combined"):
-        combined = name == "rrl_combined"
+    if (
+        name in ("rrl", "rrl_nodecay", "rrl_ce", "rrl_combined", "rrl_combined_ctx")
+        or name in ABLATIONS
+    ):
+        combined = name.startswith("rrl_combined")
+        w_explore = {"rrl_combined_e10": 0.10, "rrl_combined_e0": 0.0}.get(name, BENCH_WEIGHTS[3])
+        if not combined or name == "rrl_combined_nocd":
+            detector = None
+        elif name == "rrl_combined_cdold":
+            detector = ChangeDetector(window=4, threshold=0.6)
+        else:
+            detector = ChangeDetector(reset_long_term=name == "rrl_combined_cdlong")
+        # rrl_combined_ctx keeps counters per request (shrunk toward each tool's global ones).
+        per_context = name == "rrl_combined_ctx"
         layer = ReputationLayer(
             CandidateStore(),
-            weights=(0.20, 0.40, 0.10, 0.30),
+            weights=BENCH_WEIGHTS[:3] + (w_explore,),
             gamma=0.95 if name == "rrl" else 1.0,
             decay_unit_sec=1.0,
-            reliability=SourceReliability() if combined else None,
-            change_detector=ChangeDetector(window=4, threshold=0.6) if combined else None,
+            reliability=(
+                SourceReliability(doc_strength=None if name == "rrl_combined_globalrel" else 4.0)
+                if combined
+                else None
+            ),
+            change_detector=detector,
         )
-        blend_ce = name in ("rrl_ce", "rrl_combined")
+        blend_ce = name != "rrl" and name != "rrl_nodecay"
+        explore = w_explore > 0
         rng_state = {"state": random.Random(seed).getstate()}
         pending: Dict[int, str] = {}
 
         def choose_rrl(t, pool, step):
             sims = {d: s for d, s in pool}
             if blend_ce:
-                # Reranker as one more input: its rank, scaled to [0, 1], averaged with sim.
+                # Reranker as one more input: its rank score (best = 1, worst = 0),
+                # averaged with the retriever's similarity.
                 order = ce_order[t]
-                rank = {d: 1.0 - i / max(1, len(order) - 1) for i, d in enumerate(order)}
-                sims = {d: 0.5 * s + 0.5 * rank[d] for d, s in sims.items()}
+                rank_score = {d: 1.0 - i / max(1, len(order) - 1) for i, d in enumerate(order)}
+                sims = {d: 0.5 * s + 0.5 * rank_score[d] for d, s in sims.items()}
             random.setstate(rng_state["state"])
             res = layer.rescore(
                 {f"mbpp{d}": s for d, s in sims.items()},
                 top_k=1,
-                explore=True,
+                explore=explore,
                 epsilon=0.0,
                 now=float(step),
+                cluster_id=f"q{t}" if per_context else None,
             )
             rng_state["state"] = random.getstate()
             pending[t] = res.response_id
@@ -480,6 +529,8 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
                 s_judge=signals.s_judge,
                 now=float(step),
             )
+            if detector is not None:
+                DIAGNOSTICS[name][seed] = detector.resets
 
         return choose_rrl, update_rrl
 
@@ -633,12 +684,16 @@ def run_policies(
     ce_order: Dict[int, List[int]],
     outcome: Callable[[int, object, int], float],
     scenario: dict,
-    policies: List[str] = POLICIES,
+    policies: Optional[List[str]] = None,
 ) -> Dict[str, List[float]]:
-    """Replays every policy over one query stream. outcome(task, doc, step) -> reward."""
+    """
+    Replays every policy over one query stream. outcome(task, doc, step) -> reward.
+    scenario["signals_fn"](step, task, doc, reward) -> OutcomeSignals, if given, replaces the
+    simulated feedback (for benchmarks whose feedback comes from the tools themselves).
+    """
     signals = make_feedback(scenario, seed, len(stream))
     histories: Dict[str, List[float]] = {}
-    for name in policies:
+    for name in policies if policies is not None else RUN_POLICIES:
         if name == "oracle":
             histories[name] = [
                 max(outcome(t, d, step) for d, _ in pools[t]) for step, t in enumerate(stream)
@@ -649,7 +704,12 @@ def run_policies(
         for step, t in enumerate(stream):
             doc = choose(t, pools[t], step)
             r = outcome(t, doc, step)
-            update(t, doc, signals(step, r, doc), step)
+            sig = (
+                scenario["signals_fn"](step, t, doc, r)
+                if "signals_fn" in scenario
+                else signals(step, r, doc)
+            )
+            update(t, doc, sig, step)
             h.append(r)
         histories[name] = h
     return histories
@@ -733,10 +793,11 @@ class _Vec(list):
 
 def summarize(per_seed: Dict[str, Dict[str, List[float]]], seeds: List[int]) -> dict:
     late_frac = 0.2
-    overall = {p: [] for p in POLICIES}
-    late = {p: [] for p in POLICIES}
+    names = list(per_seed[seeds[0]])
+    overall: Dict[str, List[float]] = {p: [] for p in names}
+    late: Dict[str, List[float]] = {p: [] for p in names}
     for s in seeds:
-        for p in POLICIES:
+        for p in names:
             h = per_seed[s][p]
             k = max(1, int(len(h) * late_frac))
             overall[p].append(sum(h) / len(h))
@@ -758,12 +819,28 @@ def summarize(per_seed: Dict[str, Dict[str, List[float]]], seeds: List[int]) -> 
             "rrl_query_vs_query_memory": paired(data["query_memory"], data["rrl_query"]),
             "rrl_query_vs_memrl_q": paired(data["memrl_q"], data["rrl_query"]),
             "rrl_query_vs_rrl_combined": paired(data["rrl_combined"], data["rrl_query"]),
+            "rrl_combined_ctx_vs_rrl_combined": paired(
+                data["rrl_combined"], data["rrl_combined_ctx"]
+            ),
+            "rrl_combined_ctx_vs_memrl_q": paired(data["memrl_q"], data["rrl_combined_ctx"]),
+            "rrl_combined_ctx_vs_query_memory": paired(
+                data["query_memory"], data["rrl_combined_ctx"]
+            ),
         }
+        for a in ABLATIONS:
+            if a in data:
+                comparisons[metric][f"{a}_vs_rrl_combined"] = paired(data["rrl_combined"], data[a])
+    resets = {
+        p: mean_ci([float(DIAGNOSTICS[p].get(s, 0)) for s in seeds])
+        for p in names
+        if p in DIAGNOSTICS
+    }
     return {
         "overall": {p: mean_ci(v) for p, v in overall.items()},
         "late": {p: mean_ci(v) for p, v in late.items()},
         "per_seed_overall": overall,
         "comparisons": comparisons,
+        "change_detector_resets": resets,
     }
 
 
@@ -771,21 +848,25 @@ def print_report(summary: dict, title: str) -> None:
     print("\n" + "=" * 78)
     print(title)
     print("=" * 78)
-    print(f"{'policy':<14} | {'overall pass rate':<26} | {'late (last 20%)':<26}")
+    print(f"{'policy':<24} | {'overall pass rate':<26} | {'late (last 20%)':<26}")
     print("-" * 78)
-    for p in POLICIES:
+    for p in summary["overall"]:
         o, lt = summary["overall"][p], summary["late"][p]
         print(
-            f"{p:<14} | {o[0]:.3f} [{o[1]:.3f}, {o[2]:.3f}]     "
+            f"{p:<24} | {o[0]:.3f} [{o[1]:.3f}, {o[2]:.3f}]     "
             f"| {lt[0]:.3f} [{lt[1]:.3f}, {lt[2]:.3f}]"
         )
+    if summary.get("change_detector_resets"):
+        print("\nChange-detector resets per run (mean over seeds):")
+        for p, (m, lo, hi) in summary["change_detector_resets"].items():
+            print(f"  {p:<24} {m:.1f} [{lo:.1f}, {hi:.1f}]")
     for metric in ("overall", "late"):
         print(f"\nPaired comparisons ({metric}); diff = second − first arm, 95% CI:")
         for name, c in summary["comparisons"][metric].items():
             p_t = c.get("t_test_p", float("nan"))
             p_w = c.get("wilcoxon_p", float("nan"))
             print(
-                f"  {name:<30} {c['mean_diff']:+.3f} [{c['ci95'][0]:+.3f}, {c['ci95'][1]:+.3f}]"
+                f"  {name:<40} {c['mean_diff']:+.3f} [{c['ci95'][0]:+.3f}, {c['ci95'][1]:+.3f}]"
                 f"  W/L/T {c['wins']}/{c['losses']}/{c['ties']}  t p={p_t:.3g}  wilcoxon p={p_w:.3g}"
             )
 
@@ -855,7 +936,7 @@ def selftest() -> None:
         assert reloaded.cells == table.cells, "outcome table did not round-trip"
         summ = summarize(results[0], [42, 43])
     print(
-        f"  oracle >= every policy: {all(summ['overall']['oracle'][0] >= summ['overall'][p][0] for p in POLICIES)}"
+        f"  oracle >= every policy: {all(summ['overall']['oracle'][0] >= summ['overall'][p][0] for p in summ['overall'])}"
     )
     print("SELF-TEST OK (deterministic replay, no cache misses)")
 
@@ -872,7 +953,10 @@ def main() -> None:
     ap.add_argument("--seeds", type=int, default=30)
     ap.add_argument("--epochs", type=int, default=8)
     ap.add_argument("--scenario", default="stationary", choices=sorted(SCENARIOS) + ["all"])
+    ap.add_argument("--ablation", action="store_true", help="also replay the ABLATIONS")
     args = ap.parse_args()
+    if args.ablation:
+        enable_ablation()
 
     if args.selftest:
         selftest()

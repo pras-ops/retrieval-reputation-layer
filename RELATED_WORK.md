@@ -51,6 +51,42 @@ way ExpRAG / AWM / Dynamic Cheatsheet do.
   ([arXiv:2601.19535](https://arxiv.org/abs/2601.19535), ECIR 2026) — rerankers trained on the
   downstream utility of documents to the generator.
 
+### 1c. Agent tool / MCP selection (the application RRL is now evaluated on)
+
+- **ToolRet** ([arXiv:2503.01763](https://arxiv.org/abs/2503.01763), Findings of ACL 2025) —
+  tool-retrieval benchmark (7.6k tasks, 43k tools); retrievers strong on ordinary IR do poorly
+  on it. Gate T uses its ToolBench and ToolLens request sets and gold labels.
+- **MCPTox** ([arXiv:2508.14925](https://arxiv.org/abs/2508.14925), AAAI 2026) and
+  **MCP-SafetyBench** (ICLR 2026) — tool-poisoning attacks on real MCP servers, up to 72.8%
+  attack success. Gate T's poisoned tool twins follow this threat model.
+- **MCPEvol-Bench** ([arXiv:2607.14642](https://arxiv.org/abs/2607.14642)), **ProEvolve**
+  ([arXiv:2603.05910](https://arxiv.org/abs/2603.05910)) and **ToolEVO / ToolQA-D**
+  ([arXiv:2410.06617](https://arxiv.org/abs/2410.06617), ICLR 2025) — agents break when tools
+  and APIs change; ToolEVO adapts by training the model. RRL adapts without training, at the
+  selection layer. Gate T's tool updates follow MCPEvol-Bench's mutation idea.
+- **AutoTool** ([arXiv:2511.14650](https://arxiv.org/abs/2511.14650)) and **ToolTree**
+  ([arXiv:2603.12740](https://arxiv.org/abs/2603.12740)) — tool selection from execution
+  feedback, without untrusted-report handling or change detection.
+- Practice: MCP trust-scoring services (runtime reports, reporter-weighted reputation, schema
+  drift checks) are emerging but early and not independently evaluated.
+
+### 1d. Source reliability — the statistics RRL's trust axis comes from
+
+- **Dawid & Skene (1979)**, **GLAD** (Whitehill et al., NeurIPS 2009: per-item difficulty), and
+  **truth discovery** ([survey, arXiv:1505.02463](https://arxiv.org/abs/1505.02463); CRH,
+  CATD for sources with few claims). RRL's `SourceReliability` is a two-coin Dawid–Skene model
+  with the verifier as the known truth and per-document rates shrunk toward global ones. The
+  statistics are not new; applying them to outcome-driven retrieval and tool selection is.
+
+### 1e. Other settings with the same shape (not targeted)
+
+- Semantic caching: **vCache** ([arXiv:2502.03771](https://arxiv.org/abs/2502.03771), ICLR 2026)
+  learns per-entry thresholds with error bounds.
+- Model routing with bandit feedback: PILOT ([arXiv:2508.21141](https://arxiv.org/abs/2508.21141)),
+  BaRP ([arXiv:2510.07429](https://arxiv.org/abs/2510.07429)), ParetoBandit
+  ([arXiv:2604.00136](https://arxiv.org/abs/2604.00136), with forgetting for drift).
+- Demonstration selection as a bandit: CASE, DEARICL ([arXiv:2609.06670](https://arxiv.org/abs/2609.06670)).
+
 ### 1b. Streaming benchmarks
 
 - **StreamBench** ([arXiv:2406.08747](https://arxiv.org/abs/2406.08747), NeurIPS 2024 D&B) —
@@ -121,22 +157,23 @@ liar/deception counter, evaluated honestly with a stated failure mode.
 
 ## Honest gaps relative to this work
 
-- **Not yet evaluated on Evo-Memory** (the standard streaming benchmark). Current evidence is
-  on controlled sims (Gates A/B), a synthetic-distractor recurrence demo (Gate D), a
-  no-recurrence boundary on real HumanEval (Gate C), an MBPP recurrence harness with an
-  answer-key leak (Gate E, superseded), and its leak-free, replayable replacement (Gate F,
-  `run_gate_matrix.py`).
-- **Not yet compared against MemRL itself** — only a MemRL-style baseline (`memrl_q` in Gate F)
-  on RRL's own benchmark, not on MemRL's benchmarks.
-- **Query-conditional reputation** — the per-experience granularity that ExpRAG/ReMem use is,
-  in RRL, only the (unvalidated, future-work) clustering variant; validated results use global
-  counters.
-- **No strong-stack comparison** (hybrid retrieval + query rewriting + multi-query + agent
-  memory) yet — retriever-level comparisons only.
+- **No real tool execution.** Gate T judges a tool choice by ToolRet's gold labels, not by
+  calling the API; Gate W executes real extraction code, but on generated pages. A study on live
+  MCP servers (e.g. MCPEvol-Bench or MCPTox environments) is still needed.
+- **Not compared against MemRL's code or benchmarks** — only a MemRL-style reimplementation of
+  its ranking rule (`memrl_q`) on RRL's gates.
+- **Not evaluated on Evo-Memory** or a natural document corpus with real version changes.
+- **No strong-stack comparison** (query rewriting, multi-query, agent memory) — selection-level
+  comparisons only.
+- Evidence so far: controlled sims (Gates A/B/D), a no-recurrence boundary (C), a superseded
+  MBPP harness (E), leak-free MBPP (F), a private-API library (G), real tool descriptions (T)
+  and executable web-scraping tools (W).
 
 ## One-line positioning
 
-> RRL is a lightweight, auditable **retrieval reputation layer** — Beta-Bernoulli document
-> reputation with decay and sycophancy safeguards — that complements (rather than competes
-> with) heavier experience-reuse memory systems, and helps specifically under **query
-> recurrence with a trustworthy verifier**.
+> RRL is a lightweight, training-free **selection layer** for retrieval and tool use. It learns
+> which documents or tools actually work from outcomes, trusts other feedback only as far as the
+> verifier has confirmed it — per document or tool — and detects when an item's usefulness
+> changes. Its ranking rule overlaps with MemRL; its distinct part is the verifier-anchored,
+> per-item trust in feedback, which matters when feedback can be fooled (poisoned tools,
+> self-reporting scrapers).

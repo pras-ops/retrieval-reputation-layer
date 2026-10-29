@@ -50,7 +50,7 @@ class TestRetrieverLogic(unittest.TestCase):
         # candidate alpha_global = 5.0, beta_global = 2.0, A_global=3.0, B_global=2.0
         # cluster counter alpha=10.0, beta=10.0, A=10.0, B=10.0
         cand = Candidate(id="d1", content="test doc", alpha=5.0, beta=2.0, A=3.0, B=2.0)
-        # Set cluster_0 with 18 observations (A_c=10.0, B_c=10.0 => n = 10+10-2 = 18 >= 10.0 => lam = 1.0)
+        # Set cluster_0 with 18 observations
         cand.cluster_counters["cluster_0"] = {
             "alpha": 10.0,
             "beta": 10.0,
@@ -70,12 +70,13 @@ class TestRetrieverLogic(unittest.TestCase):
             use_clustering=True,
         )
 
-        # Retrieve: lam = 1.0 => alpha_eff = 10.0, beta_eff = 10.0, A_eff = 10.0, B_eff = 10.0
-        # C_robust = 10 / 20 = 0.5
-        # P_i = 10 / 20 = 0.5
-        # expected score = 0.5 * 0.5 + 0.5 * 0.5 = 0.5
+        # Cluster evidence n = alpha_c + beta_c - 2 = 18, weight lam = 18 / (18 + 4).
+        # Counters are pulled most of the way to the cluster's (10, 10).
+        lam = 18.0 / 22.0
+        alpha, beta = (1 - lam) * 5.0 + lam * 10.0, (1 - lam) * 2.0 + lam * 10.0
+        A, B = (1 - lam) * 3.0 + lam * 10.0, (1 - lam) * 2.0 + lam * 10.0
         res = retriever.retrieve("query", top_k=1, explore=False)
-        self.assertAlmostEqual(res[0][1], 0.5)
+        self.assertAlmostEqual(res[0][1], 0.5 * alpha / (alpha + beta) + 0.5 * A / (A + B))
 
     def test_optimistic_prior_new_doc(self):
         store = CandidateStore()

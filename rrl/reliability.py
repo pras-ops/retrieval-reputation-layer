@@ -1,19 +1,23 @@
 """
 RRL Feedback-Source Reliability
-Learns how often each unverified feedback source (user behavior, LLM judge, thumbs)
-agrees with the verifier, and combines unverified signals by those learned accuracies.
+Learns how well each unverified feedback source (user behavior, LLM judge, thumbs, a tool's
+self-report) predicts the verifier, and combines unverified signals by that evidence.
 
 The verifier (s_gt) is the root of trust, as the small clean root dataset is in FLTrust
-(Cao et al., NDSS 2021). Each source is modeled as a one-coin annotator in the sense of
-Dawid & Skene (1979): it reports the true outcome with accuracy a_s. Unverified signals are
-then combined by a naive-Bayes log-odds vote with weight log(a_s / (1 - a_s)), so a source
-that has never been checked against the verifier, or that agrees with it only at chance,
-contributes nothing.
+(Cao et al., NDSS 2021). Each source is modeled as a two-coin annotator in the sense of
+Dawid & Skene (1979): it has a sensitivity (says "worked" when it did) and a specificity
+(says "failed" when it did). Agreement rate alone is not enough: when most outcomes succeed,
+a source that always says "worked" agrees with the verifier most of the time while telling us
+nothing. With two coins its "worked" vote carries log(sens / (1 - spec)) ≈ log(1 / 1) = 0.
 
-Accuracies are kept globally and per document, and the per-document estimate is shrunk toward
-the global one (prior strength `doc_strength`). A source can be reliable in general and still
-be fooled by one particular document — users who trust an authoritative-looking but wrong guide
-— and only a per-document estimate can catch that.
+Unverified signals are combined as a naive-Bayes posterior: the verifier's base rate plus each
+source's log-likelihood ratio. Sources are treated as independent, which they need not be (a
+user and a judge reading the same answer); max_weight caps any one source's influence.
+
+Rates are kept globally and per document, and the per-document rates are shrunk toward the
+global ones (prior strength `doc_strength`; None keeps only global rates). A source can be
+reliable in general and still be fooled by one particular document, and only a per-document
+estimate can catch that.
 """
 
 import math
@@ -23,76 +27,93 @@ from .feedback import OutcomeSignals
 
 SOURCES: Tuple[str, ...] = ("s_behave", "s_judge", "s_expl")
 
+# Confusion counts per source: [true positives, false negatives, true negatives, false positives]
+TP, FN, TN, FP = 0, 1, 2, 3
+
+
+def _zero() -> Dict[str, list]:
+    return {s: [0.0, 0.0, 0.0, 0.0] for s in SOURCES}
+
 
 class SourceReliability:
     def __init__(
         self,
         prior: Tuple[float, float] = (1.0, 1.0),
         max_weight: float = 4.0,
-        doc_strength: float = 4.0,
+        doc_strength: Optional[float] = 4.0,
     ):
         self.prior = prior
         self.max_weight = max_weight
         self.doc_strength = doc_strength
-        # source -> [agreements, disagreements] with the verifier
-        self.counts: Dict[str, list] = {s: [0.0, 0.0] for s in SOURCES}
-        # doc id -> source -> [agreements, disagreements]
+        self.counts: Dict[str, list] = _zero()
         self.doc_counts: Dict[str, Dict[str, list]] = {}
+        # verified outcomes seen: [successes, failures]
+        self.base: list = [0.0, 0.0]
 
     def observe(self, signals: OutcomeSignals, doc_ids: Iterable[str] = ()) -> None:
         """Score every present source against the verifier, when the verifier is present."""
         if signals.s_gt is None:
             return
         truth = signals.s_gt > 0.5
-        docs = list(doc_ids)
+        self.base[0 if truth else 1] += 1.0
+        docs = list(doc_ids) if self.doc_strength is not None else []
         for src in SOURCES:
             val = getattr(signals, src)
             if val is None:
                 continue
-            slot = 0 if (val > 0.5) == truth else 1
+            says = val > 0.5
+            slot = (TP if says else FN) if truth else (FP if says else TN)
             self.counts[src][slot] += 1.0
             for d in docs:
-                per_doc = self.doc_counts.setdefault(d, {s: [0.0, 0.0] for s in SOURCES})
-                per_doc[src][slot] += 1.0
+                self.doc_counts.setdefault(d, _zero())[src][slot] += 1.0
 
-    def accuracy(self, src: str, doc_id: Optional[str] = None) -> float:
-        """Posterior mean agreement with the verifier, per document when doc_id is given."""
-        agree, disagree = self.counts[src]
+    def rates(self, src: str, doc_id: Optional[str] = None) -> Tuple[float, float]:
+        """Posterior-mean (sensitivity, specificity), per document when doc_id is given."""
         a0, b0 = self.prior
-        acc = (agree + a0) / (agree + disagree + a0 + b0)
-        if doc_id is None or doc_id not in self.doc_counts:
-            return acc
-        d_agree, d_disagree = self.doc_counts[doc_id][src]
+        tp, fn, tn, fp = self.counts[src]
+        sens = (tp + a0) / (tp + fn + a0 + b0)
+        spec = (tn + a0) / (tn + fp + a0 + b0)
+        if doc_id is None or self.doc_strength is None or doc_id not in self.doc_counts:
+            return sens, spec
         k = self.doc_strength
-        return (d_agree + k * acc) / (d_agree + d_disagree + k)
+        dtp, dfn, dtn, dfp = self.doc_counts[doc_id][src]
+        return (dtp + k * sens) / (dtp + dfn + k), (dtn + k * spec) / (dtn + dfp + k)
 
-    def weight(self, src: str, doc_id: Optional[str] = None) -> float:
-        """Log-odds vote weight; zero for a source no better than chance."""
-        a = self.accuracy(src, doc_id)
-        if a <= 0.5:
+    def llr(self, src: str, says_success: bool, doc_id: Optional[str] = None) -> float:
+        """
+        Log-likelihood ratio of a vote. Zero for a source no better than chance
+        (sens + spec <= 1): it is ignored rather than inverted, since an adversarial source
+        can change its behavior.
+        """
+        sens, spec = self.rates(src, doc_id)
+        if sens + spec <= 1.0:
             return 0.0
-        return min(self.max_weight, math.log(a / (1.0 - a)))
+        r = math.log(sens / (1.0 - spec)) if says_success else math.log((1.0 - sens) / spec)
+        return max(-self.max_weight, min(self.max_weight, r))
 
     def combine(self, signals: OutcomeSignals, doc_id: Optional[str] = None) -> Optional[float]:
         """
         Outcome y in [0, 1]. The verifier overrides when present. Otherwise returns the
-        posterior P(success) from a log-odds vote of the unverified sources, or None when
-        no present source has earned any weight (the caller should then skip the update).
+        posterior P(success), or None when no present source carries any evidence (the
+        caller should then skip the update rather than learn from the base rate alone).
         """
         if signals.s_gt is not None:
             return max(0.0, min(1.0, signals.s_gt))
-        logit = 0.0
-        total = 0.0
+        evidence = 0.0
+        informative = False
         for src in SOURCES:
             val = getattr(signals, src)
             if val is None:
                 continue
-            w = self.weight(src, doc_id)
-            logit += w if val > 0.5 else -w
-            total += w
-        if total == 0.0:
+            r = self.llr(src, val > 0.5, doc_id)
+            if r != 0.0:
+                informative = True
+            evidence += r
+        if not informative:
             return None
-        return 1.0 / (1.0 + math.exp(-logit))
+        succ, fail = self.base
+        prior_logit = math.log((succ + 1.0) / (fail + 1.0))
+        return 1.0 / (1.0 + math.exp(-(prior_logit + evidence)))
 
     def to_dict(self) -> dict:
         return {
@@ -101,6 +122,7 @@ class SourceReliability:
             "doc_strength": self.doc_strength,
             "counts": self.counts,
             "doc_counts": self.doc_counts,
+            "base": self.base,
         }
 
     @classmethod
@@ -110,9 +132,10 @@ class SourceReliability:
             max_weight=data["max_weight"],
             doc_strength=data.get("doc_strength", 4.0),
         )
-        obj.counts = {s: list(data["counts"].get(s, [0.0, 0.0])) for s in SOURCES}
+        obj.counts = {s: list(data["counts"].get(s, [0.0] * 4)) for s in SOURCES}
         obj.doc_counts = {
-            d: {s: list(c.get(s, [0.0, 0.0])) for s in SOURCES}
+            d: {s: list(c.get(s, [0.0] * 4)) for s in SOURCES}
             for d, c in data.get("doc_counts", {}).items()
         }
+        obj.base = list(data.get("base", [0.0, 0.0]))
         return obj

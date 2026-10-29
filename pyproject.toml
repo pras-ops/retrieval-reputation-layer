@@ -63,6 +63,8 @@ dev = [
     "sentence-transformers>=2.2",
     "scipy>=1.10",
     "scikit-learn>=1.2",
+    "pandas>=2.0",  # sim/run_gate_t.py --build reads ToolRet parquet files
+    "pyarrow>=14",
 ]
 
 

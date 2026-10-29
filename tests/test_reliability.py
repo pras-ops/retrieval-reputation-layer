@@ -14,23 +14,31 @@ from rrl.store import Candidate, CandidateStore
 class TestSourceReliability(unittest.TestCase):
     def test_unchecked_sources_carry_no_weight(self):
         rel = SourceReliability()
-        self.assertEqual(rel.weight("s_behave"), 0.0)
+        self.assertEqual(rel.llr("s_behave", True), 0.0)
         self.assertIsNone(rel.combine(OutcomeSignals(s_behave=1.0, s_judge=1.0)))
 
     def test_verifier_overrides(self):
         rel = SourceReliability()
         self.assertEqual(rel.combine(OutcomeSignals(s_gt=0.0, s_behave=1.0)), 0.0)
 
+    def test_always_yes_source_is_ignored_even_when_most_outcomes_succeed(self):
+        # 90% of outcomes succeed, so "always yes" agrees with the verifier 90% of the time.
+        # It still cannot tell success from failure, so its vote must carry no weight.
+        rel = SourceReliability()
+        for i in range(100):
+            truth = 0.0 if i % 10 == 0 else 1.0
+            rel.observe(OutcomeSignals(s_gt=truth, s_behave=1.0, s_judge=truth))
+        # Only the Beta(1, 1) smoothing keeps it off exactly zero.
+        self.assertLess(abs(rel.llr("s_behave", True)), 0.1)
+        self.assertGreater(rel.llr("s_judge", True), 1.0)
+        self.assertLess(rel.llr("s_judge", False), -1.0)
+        # Its "yes" barely moves the outcome from the 90% base rate.
+        self.assertLess(rel.combine(OutcomeSignals(s_behave=1.0)), 0.92)
+
     def test_learns_to_ignore_sycophantic_source(self):
         rel = SourceReliability()
-        # The user always accepts; the judge agrees with the verifier.
         for truth in [1.0, 0.0] * 20:
             rel.observe(OutcomeSignals(s_gt=truth, s_behave=1.0, s_judge=truth))
-        self.assertAlmostEqual(rel.accuracy("s_behave"), 0.5, places=6)
-        self.assertEqual(rel.weight("s_behave"), 0.0)
-        self.assertGreater(rel.weight("s_judge"), 1.0)
-
-        # Unverified event: user says yes, judge says no -> trust the judge.
         y = rel.combine(OutcomeSignals(s_behave=1.0, s_judge=0.0))
         self.assertIsNotNone(y)
         self.assertLess(y, 0.1)
@@ -42,12 +50,17 @@ class TestSourceReliability(unittest.TestCase):
             rel.observe(OutcomeSignals(s_gt=truth, s_behave=truth, s_judge=truth), ["good"])
         for _ in range(10):
             rel.observe(OutcomeSignals(s_gt=0.0, s_behave=1.0, s_judge=0.0), ["poison"])
-        self.assertGreater(rel.weight("s_behave"), 1.0)
-        self.assertEqual(rel.weight("s_behave", "poison"), 0.0)
+        self.assertGreater(rel.llr("s_behave", True), 1.0)
+        self.assertLess(rel.llr("s_behave", True, "poison"), 0.5)
 
-        unverified = OutcomeSignals(s_behave=1.0, s_judge=0.0)
-        self.assertLess(rel.combine(unverified, "poison"), 0.1)
+        self.assertLess(rel.combine(OutcomeSignals(s_behave=1.0, s_judge=0.0), "poison"), 0.1)
         self.assertGreater(rel.combine(OutcomeSignals(s_behave=1.0), "good"), 0.9)
+
+    def test_global_only_mode_ignores_documents(self):
+        rel = SourceReliability(doc_strength=None)
+        rel.observe(OutcomeSignals(s_gt=0.0, s_behave=1.0), ["poison"])
+        self.assertEqual(rel.doc_counts, {})
+        self.assertEqual(rel.rates("s_behave", "poison"), rel.rates("s_behave"))
 
     def test_round_trip(self):
         rel = SourceReliability()
@@ -55,6 +68,7 @@ class TestSourceReliability(unittest.TestCase):
         clone = SourceReliability.from_dict(rel.to_dict())
         self.assertEqual(clone.counts, rel.counts)
         self.assertEqual(clone.doc_counts, rel.doc_counts)
+        self.assertEqual(clone.base, rel.base)
 
 
 class TestChangeDetector(unittest.TestCase):
@@ -63,11 +77,85 @@ class TestChangeDetector(unittest.TestCase):
         self.assertFalse(ChangeDetector(window=4).detect(c))
 
     def test_resets_on_shift(self):
-        c = Candidate(id="d", content="", alpha=9.0, beta=1.0)
+        c = Candidate(id="d", content="", alpha=9.0, beta=1.0, A=5.0, B=1.0)
         c.recent_outcomes = [1.0] * 4 + [0.0] * 4
-        self.assertTrue(ChangeDetector(window=4).check(c))
+        det = ChangeDetector(window=4)
+        self.assertTrue(det.check(c))
         self.assertEqual((c.alpha, c.beta), (1.0, 5.0))
+        self.assertEqual((c.A, c.B), (5.0, 1.0))  # long-term counters kept by default
         self.assertEqual(c.recent_outcomes, [0.0] * 4)
+        self.assertEqual(det.resets, 1)
+
+    def test_optional_long_term_reset(self):
+        c = Candidate(id="d", content="", A=5.0, B=1.0)
+        c.recent_outcomes = [1.0] * 4 + [0.0] * 4
+        ChangeDetector(window=4, reset_long_term=True).check(c)
+        self.assertEqual((c.A, c.B), (1.0, 2.0))
+
+    def test_threshold_is_quantized_by_window(self):
+        # Window means move in steps of 0.25: a 0.5 shift does not reach 0.6.
+        c = Candidate(id="d", content="", recent_outcomes=[1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0])
+        self.assertFalse(ChangeDetector(window=4, threshold=0.6).detect(c))
+
+
+class TestStatisticalChangeDetector(unittest.TestCase):
+    def test_noisy_but_stationary_outcomes_rarely_reset(self):
+        # A tool that works for about half of the requests, with no change at all.
+        import random
+
+        rng = random.Random(0)
+        fixed, test = ChangeDetector(window=4, threshold=0.6), ChangeDetector()
+        for _ in range(2000):
+            c = Candidate(id="d", content="")
+            c.recent_outcomes = [float(rng.random() < 0.5) for _ in range(16)]
+            fixed.check(c)
+            c.recent_outcomes = [float(rng.random() < 0.5) for _ in range(16)]
+            test.check(c)
+        self.assertGreater(fixed.resets, 100)
+        self.assertLess(test.resets, 40)
+
+    def test_detects_clear_flip(self):
+        c = Candidate(id="d", content="")
+        c.recent_outcomes = [1.0] * 8 + [0.0] * 8
+        self.assertTrue(ChangeDetector().check(c))
+
+    def test_checks_cluster_counters(self):
+        c = Candidate(id="d", content="")
+        c.recent_outcomes = [1.0] * 16  # globally stable
+        c.cluster_counters = {
+            "site": {"alpha": 9.0, "beta": 1.0, "recent_outcomes": [1.0] * 8 + [0.0] * 8}
+        }
+        det = ChangeDetector()
+        self.assertTrue(det.check(c, "site"))
+        self.assertEqual(c.cluster_counters["site"]["beta"], 9.0)
+        self.assertFalse(det.check(c))
+
+
+class TestClusterShrinkage(unittest.TestCase):
+    def test_cluster_evidence_overrides_global_reputation(self):
+        store = CandidateStore()
+        layer = ReputationLayer(store, weights=(0.0, 1.0, 0.0, 0.0), gamma=1.0)
+        # "a" works on site x and fails on site y; "b" is the reverse.
+        for step in range(20):
+            for site, good in (("x", "a"), ("y", "b")):
+                res = layer.rescore(
+                    {"a": 1.0, "b": 1.0}, top_k=2, explore=False, cluster_id=site, now=float(step)
+                )
+                for doc in ("a", "b"):
+                    r = layer.rescore(
+                        {doc: 1.0}, top_k=1, explore=False, cluster_id=site, now=float(step)
+                    )
+                    layer.record_feedback(
+                        r.response_id, s_gt=1.0 if doc == good else 0.0, now=float(step)
+                    )
+                store.pop_pending(res.response_id)
+        top_x = layer.rescore({"a": 1.0, "b": 1.0}, top_k=1, explore=False, cluster_id="x").results[
+            0
+        ][0]
+        top_y = layer.rescore({"a": 1.0, "b": 1.0}, top_k=1, explore=False, cluster_id="y").results[
+            0
+        ][0]
+        self.assertEqual((top_x, top_y), ("a", "b"))
 
 
 class TestLayerIntegration(unittest.TestCase):
