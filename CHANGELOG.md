@@ -62,6 +62,8 @@ All notable changes to this project are documented here. The format is based on
 - `run_policies` accepts `scenario["signals_fn"]` for benchmarks whose feedback comes from the
   tools rather than a simulated user.
 - `sim/summarize_results.py` prints the RESULTS.md tables from `sim/results/*.json`.
+- Gate F's 30-seed Gemini outcome table and results; `--timeouts-as-failures` records cells whose
+  generation still times out after `--build` as failed (`"error": "timeout"`).
 - `ChangeDetector.resets` and `ChangeDetector(reset_long_term=True)`; `ChangeDetector.check()`
   takes a cluster id and then checks that cluster's own counters.
 - `ReputationLayer(cluster_strength=...)`.

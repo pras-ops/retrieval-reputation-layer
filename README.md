@@ -293,7 +293,7 @@ All replay offline from committed data, 30 seeds, paired statistics, with ablati
 | **T** — tool selection (`sim/run_gate_t.py`) | Real ToolRet requests and tool descriptions; tool updates, poisoned twins, flaky tools, held-out requests | Learning beats the static reranker (≈30% → 41–59%). **Beats MemRL-style when feedback is fooled by poisoned tools** (+3 to +11 points, 30/30 seeds); behind it by 2–4 points on honest or randomly noisy feedback at exploration 0.30, about level at 0.10 |
 | **W** — web-scraping tools (`sim/run_gate_w.py`) | 8 executable extractors on 30 generated shops; tools' own success reports; redesigns; held-out sites | Reranker and MemRL-style are fooled by a "universal" extractor (0–1%); **RRL 39–59%, per-context RRL best everywhere**; per-item reliability worth 8–9 points with spot checks |
 | **G** — private-API docs (`sim/run_gate_g.py`) | Real Gemini code against a generated library; poisoned guides; API switch | Wins when users trust the poisoned guide (+4.9); **loses to MemRL-style under an API switch** (−8 to −18), where the new change detector is slow |
-| **F** — MBPP, leak-free (`sim/run_gate_matrix.py`) | Gate E without the answer leak, replayable | Retrieval barely changes the outcome here (6 complete seeds); 30-seed table in progress |
+| **F** — MBPP, leak-free (`sim/run_gate_matrix.py`) | Gate E without the answer leak, replayable | Retrieval barely changes the outcome (reranker 57.1% = no retrieval 57.2%; best possible 61.3%). RRL +1.3 over the reranker, level with MemRL-style |
 
 **Change detection is a trade-off:** the default z-test detector avoids false resets (Gate W),
 the original fast detector (`ChangeDetector(window=4, threshold=0.6)`) adapts faster to abrupt

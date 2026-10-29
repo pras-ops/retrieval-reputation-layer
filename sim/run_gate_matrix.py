@@ -954,6 +954,11 @@ def main() -> None:
     ap.add_argument("--epochs", type=int, default=8)
     ap.add_argument("--scenario", default="stationary", choices=sorted(SCENARIOS) + ["all"])
     ap.add_argument("--ablation", action="store_true", help="also replay the ABLATIONS")
+    ap.add_argument(
+        "--timeouts-as-failures",
+        action="store_true",
+        help="record cells whose generation still fails after --build as failed (error=timeout)",
+    )
     args = ap.parse_args()
     if args.ablation:
         enable_ablation()
@@ -984,6 +989,15 @@ def main() -> None:
         )
         table.fill(needed, problems, gen)
     missing = table.missing(needed)
+    if missing and args.timeouts_as_failures:
+        # No answer within the time limit is a failed task, as it would be in production.
+        with open(table.path, "a") as f:
+            for t, d in missing:
+                table.cells[(t, d)] = 0.0
+                row = {"task_id": t, "doc": d, "passed": 0.0, "completion": "", "error": "timeout"}
+                f.write(json.dumps(row) + "\n")
+        print(f"[build] recorded {len(missing)} timed-out cells as failures")
+        missing = []
     if missing:
         sys.exit(f"{len(missing)} outcome cells missing from {table.path}; run with --build.")
 

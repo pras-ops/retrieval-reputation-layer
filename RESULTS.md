@@ -196,12 +196,32 @@ The easy variant (`--variant easy`, results in `sim/results/gate_g_*.json`) has 
 is always right before the switch; there RRL beats MemRL-style by about 19–22 points without
 drift and loses by 2–4 with it.
 
-## Gate F — MBPP, leak-free (in progress)
+## Gate F — MBPP, leak-free
 
-On the 6 seeds whose Gemini outcomes were complete, retrieval barely mattered (the most and the
-least similar candidate pass at 59% and 58%; best possible 65.6%), so no ranking method has much
-to learn there. The 30-seed table is still being generated; results will be added when it is
-complete.
+`python3 sim/run_gate_matrix.py --generator gemini --scenario all --ablation` replays
+`data/matrix_outcomes_gemini-2.5-flash.jsonl` (4,128 Gemini 2.5 Flash cells; one prompt timed
+out on every retry and is recorded as a failure, `"error": "timeout"`). 30 questions per seed,
+8 epochs, pool of 5 related MBPP solutions (never the question's own).
+
+| Policy | stationary | sparse verifier | sycophantic | drift |
+|---|---|---|---|---|
+| no retrieval | 57.2 | 57.2 | 57.2 | 57.2 |
+| static reranker | 57.1 | 57.1 | 57.1 | 56.3 |
+| reuse what worked | 60.4 | 60.4 | 59.9 | 58.7 |
+| MemRL-style | 57.9 | 57.8 | 57.8 | 57.6 |
+| RRL combined | 58.4 | 57.7 | 57.7 | 57.1 |
+| RRL combined, explore 0.10 | 58.3 | 58.1 | 58.0 | 57.4 |
+| RRL + per-context | 58.7 | 58.0 | 57.9 | 57.3 |
+| best possible | 61.3 | 61.3 | 61.3 | 61.3 |
+
+**Retrieval barely matters here.** The reranker does no better than no retrieval (57.1 vs 57.2),
+the most and least similar candidates pass at the same rate (56.9% vs 56.2% over 4,500 pairs),
+a document helps in 2.0% of pairs and hurts in 2.8%, and the best possible pick is only 4 points
+above the reranker. RRL gains +1.3 points over the reranker when nothing changes (p = 0.0001)
+and is level with MemRL-style; per-question "reuse what worked" is best (+2.0 over RRL), since
+with deterministic outcomes it settles on the best candidate per question. Gate F mainly shows
+that a benchmark where the model already knows the answer cannot show the value of learning
+which documents help — which is why Gates G, T and W were built.
 
 ## Limits
 
