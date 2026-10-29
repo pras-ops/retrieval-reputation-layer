@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **Paper draft** (`paper/`): `main.tex` ("Trust, Not Just Relevance"), `references.bib`
+  built from arXiv metadata, and `make_tables.py`, which writes every results table and every
+  number quoted in the text from `sim/results/*.json`. Build with
+  `python3 paper/make_tables.py && cd paper && tectonic main.tex`.
 - **Gate F** (`sim/run_gate_matrix.py`): a leak-free, fully replayable MBPP benchmark. The
   corpus never contains a query's own solution; every (query, candidate) outcome is
   pre-computed into a JSONL outcome table, so all policies are replayed offline and

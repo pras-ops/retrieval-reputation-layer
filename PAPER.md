@@ -3,6 +3,11 @@
 Working title: **Trust, Not Just Relevance: Verifier-Anchored Tool Selection Under Partial
 Feedback and Tool Drift**
 
+**Draft:** [`paper/main.tex`](paper/main.tex) (PDF: `paper/main.pdf`). Every table and quoted
+number is generated from `sim/results/` by `paper/make_tables.py`; rebuild with
+`python3 paper/make_tables.py && cd paper && tectonic main.tex`. The author block is a
+placeholder.
+
 This file tracks the paper built on this repository: the claim, what the evidence supports today,
 what must be done before submission, and how to post a preprint. Numbers come from
 [RESULTS.md](RESULTS.md); related work and its verification status from

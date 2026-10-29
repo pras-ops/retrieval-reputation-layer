@@ -1,0 +1,21 @@
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lrrrrr}
+\toprule
+Overall / held-out success (\%) & Verified & Sycophantic & Fooled & Drift & Drift + fooled \\
+\midrule
+Static reranker & 29.1 / 32.2 & 29.1 / 32.2 & 29.1 / 32.2 & 26.5 / 25.2 & 26.5 / 25.2 \\
+Per-context memory & 42.9 / 32.2 & 38.2 / 32.2 & 34.7 / 32.2 & 36.2 / 25.2 & 29.7 / 25.2 \\
+Per-context memory, robust & 43.5 / 32.2 & 37.1 / 32.2 & 34.3 / 32.2 & 35.7 / 25.2 & 28.6 / 25.2 \\
+MemRL-style & 55.4 / 57.9 & \textbf{51.7} / 56.3 & 43.9 / 50.3 & \textbf{52.4} / 55.4 & 40.6 / 42.0 \\
+\midrule
+RRL (global) & 56.1 / 55.6 & 48.1 / 52.1 & 46.2 / 50.3 & 49.9 / 52.0 & 41.6 / 42.3 \\
+\textbf{RRL full} & \textbf{58.1} / 55.8 & 48.7 / 51.1 & \textbf{46.3} / 49.8 & 50.4 / 51.2 & \textbf{41.8} / 45.0 \\
+\textit{Best possible} & 85.1 / 81.1 & 85.1 / 81.1 & 85.1 / 81.1 & 84.7 / 83.2 & 84.7 / 83.2 \\
+\bottomrule
+\end{tabular}
+\caption{Gate T (ToolLens requests from ToolRet).}
+\label{tab:gatetl}
+\end{table*}
