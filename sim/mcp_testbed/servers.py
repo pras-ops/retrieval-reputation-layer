@@ -39,7 +39,8 @@ _rng = random.Random(os.environ.get("FAULT_SEED", "0"))
 def _fetch(url: str) -> str:
     if not url.startswith("http://127.0.0.1:"):
         raise ValueError("this testbed only fetches from the local shop site")
-    with urllib.request.urlopen(url, timeout=5) as r:
+    # Only http://127.0.0.1 URLs reach this line (checked above).
+    with urllib.request.urlopen(url, timeout=5) as r:  # nosec B310
         return r.read().decode()
 
 

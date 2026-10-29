@@ -61,6 +61,13 @@ UPDATE_FRAC, POISON_FRAC, FLAKY_FRAC = 0.3, 0.1, 0.2
 FLAKY_FAIL, BASE_FAIL = 0.5, 0.05
 HELDOUT_FRAC = 0.2
 
+# Exact ToolRet revisions the committed pools were built from (pinned for reproducibility, and so
+# that a changed upstream repository cannot silently change the benchmark).
+TOOLRET_REVISIONS = {
+    "mangopy/ToolRet-Queries": "b8c76ad3349ff17497b6bdb28bb5b8f61a0f6445",
+    "mangopy/ToolRet-Tools": "e06c38c75612b6536bd959e08cdd345894aba6a7",
+}
+
 SCENARIOS: Dict[str, dict] = {
     "stationary": {"coverage": 1.0, "sycophancy": 0.0, "judge_acc": 0.8, "switch": False},
     "sparse_verifier": {"coverage": 0.2, "sycophancy": 0.0, "judge_acc": 0.8, "switch": False},
@@ -96,7 +103,13 @@ def download() -> None:
         ("mangopy/ToolRet-Queries", f"{s}/queries-00000-of-00001.parquet") for s in SUBSETS
     ]
     for repo, fn in files:
-        hf_hub_download(repo, fn, repo_type="dataset", local_dir=os.path.join(RAW_DIR, repo))
+        hf_hub_download(
+            repo,
+            fn,
+            repo_type="dataset",
+            revision=TOOLRET_REVISIONS[repo],
+            local_dir=os.path.join(RAW_DIR, repo),
+        )
 
 
 def _tool_text(doc_json: str) -> Tuple[str, str]:

@@ -171,7 +171,7 @@ def generate_answer(query: str, contexts: List[str], problem: dict, hint_id: str
 
     import hashlib
 
-    h = int(hashlib.md5(problem["task_id"].encode()).hexdigest(), 16)
+    h = int(hashlib.md5(problem["task_id"].encode(), usedforsecurity=False).hexdigest(), 16)
     if is_good:
         # 95% success rate with good hint
         if (h % 100) < 95:

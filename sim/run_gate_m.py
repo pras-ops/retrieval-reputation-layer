@@ -74,6 +74,13 @@ SCENARIOS: Dict[str, dict] = {
 # ---------------------------------------------------------------- shared helpers
 
 
+def _canary_file() -> str:
+    """A fresh, empty temporary file for the canary tool to append to (created safely)."""
+    fd, path = tempfile.mkstemp(prefix="rrl_canary_")
+    os.close(fd)
+    return path
+
+
 def judge(result: Optional[dict], error: str, truth: dict) -> Tuple[float, float, float]:
     """(correct, tool's own success claim, schema-valid)."""
     if error or result is None:
@@ -108,7 +115,7 @@ def record() -> None:
     from mcp_testbed.site import ShopSite
 
     os.makedirs(M_DIR, exist_ok=True)
-    canary = tempfile.mktemp()
+    canary = _canary_file()
     site = ShopSite().start()
     pool = McpPool(env={"universal": {"CANARY_FILE": canary}}).start_all()
     registry: Dict[str, dict] = {}
@@ -350,7 +357,7 @@ def live_seed(env: Env, seed: int, epochs: int, scenario: dict):
     from mcp_testbed.site import ShopSite
 
     pairs, switch_at, _, cov, n_held = stream_for(seed, epochs, scenario)
-    canary = tempfile.mktemp()
+    canary = _canary_file()
     site = ShopSite().start()
     pool = McpPool(
         env={
@@ -442,7 +449,7 @@ def selftest() -> None:
     from mcp_testbed.client import McpPool
     from mcp_testbed.site import ShopSite
 
-    canary = tempfile.mktemp()
+    canary = _canary_file()
     site = ShopSite().start()
     pool = McpPool(env={"universal": {"CANARY_FILE": canary}}).start_all()
     try:

@@ -51,3 +51,6 @@ scratch/
 
 # Gate T raw downloads (ToolRet; no license stated, not redistributed)
 data/gate_t/raw/
+
+# Local assistant settings
+.claude/

@@ -435,6 +435,14 @@ python3 sim/run_gate_m.py --record                        # re-record all MCP re
 python3 sim/summarize_results.py                         # result tables for RESULTS.md
 ```
 
+> [!WARNING]
+> **Security.** `--build` in Gates C, E, F and G runs code written by an LLM on your machine (in a
+> subprocess, against unit tests). Run builds in a container or VM. Replays only read the
+> committed outcome tables and run no generated code. Gate M's MCP servers only fetch from
+> `127.0.0.1`, and its "poisoned" server is a harmless canary that writes to a temporary file.
+> No API keys are stored in this repository: Gemini credentials come from the environment
+> (`GEMINI_API_KEY`, or `GCP_PROJECT_ID` with Application Default Credentials).
+
 Gate F and Gate G build their outcome tables once with `--build` (Gemini calls; needs
 `USE_REAL_GEMINI=true` and credentials). Every later run replays the committed tables offline.
 

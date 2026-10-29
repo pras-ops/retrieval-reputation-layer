@@ -94,6 +94,9 @@ POOL_K = 5
 N_FAMILIES = 8
 NO_DOC = "NONE"
 
+# Exact Hugging Face revisions used for the recorded results.
+HF_REVISIONS = {"Qwen/Qwen2.5-0.5B-Instruct": "7ae557604adf67be50417f59c2c2f167def9a775"}
+
 POLICIES = [
     "no_retrieval",
     "static_rrf",
@@ -317,8 +320,12 @@ class HFGenerator:
             if torch.backends.mps.is_available()
             else ("cuda" if torch.cuda.is_available() else "cpu")
         )
-        self.tok = AutoTokenizer.from_pretrained(model_name, padding_side="left")
-        self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16)
+        # Pinned so a changed upstream repository cannot silently change the benchmark.
+        rev = HF_REVISIONS.get(model_name)
+        self.tok = AutoTokenizer.from_pretrained(model_name, padding_side="left", revision=rev)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name, torch_dtype=torch.float16, revision=rev
+        )
         self.model.to(self.device).eval()
 
     def generate(self, prompts: List[str]) -> List[str]:

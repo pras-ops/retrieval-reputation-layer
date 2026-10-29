@@ -364,18 +364,6 @@ def main():
         plt.savefig(plot_path, dpi=300)
         plt.close()
         print(f"\n[Success] Saved comparison plots to: {plot_path}")
-
-        # Also save to the artifacts directory
-        artifacts_dir = (
-            "/Users/mouseback/.gemini/antigravity-ide/brain/03e0f3d5-ada5-4c43-a194-2049ea5a00f1"
-        )
-        if os.path.exists(artifacts_dir):
-            import shutil
-
-            shutil.copy(plot_path, os.path.join(artifacts_dir, "gate_d_comparison.png"))
-            print(
-                f"[Success] Copied comparison plot to artifacts directory: {os.path.join(artifacts_dir, 'gate_d_comparison.png')}"
-            )
     except Exception as e:
         print(f"[Warning] Failed to generate/save plots: {e}")
 
