@@ -146,14 +146,14 @@ from rrl import ChangeDetector, SourceReliability
 
 layer = ReputationLayer(
     store,
-    gamma=1.0,                              # no time decay; changes are detected instead
-    reliability=SourceReliability(),        # trust users / judges / self-reports per item
-    change_detector=ChangeDetector(),       # reset an item when its results shift
+    gamma=1.0,  # no time decay; changes are detected instead
+    reliability=SourceReliability(),  # trust users / judges / self-reports per item
+    change_detector=ChangeDetector(),  # reset an item when its results shift
 )
 res = layer.rescore(
-    {"jsonld_extractor": 0.8, "universal_extractor": 0.9},   # relevance, e.g. reranker-blended
+    {"jsonld_extractor": 0.8, "universal_extractor": 0.9},  # relevance, e.g. reranker-blended
     top_k=1,
-    cluster_id="site:shop.example",         # optional: learn per context, shrunk to global
+    cluster_id="site:shop.example",  # optional: learn per context, shrunk to global
 )
 # Verified when a spot check ran; otherwise only the trusted sources move the counters.
 layer.record_feedback(res.response_id, s_behave=1.0, s_judge=1.0, s_gt=None)
