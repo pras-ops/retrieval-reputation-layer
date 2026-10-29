@@ -7,10 +7,17 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **Fixed-rule ablation** `rrl_combined_ctx_verified_fixed` (RRL + per-context + verified memory
+  with the fixed feedback rule instead of learned source reliability), with paired comparisons
+  against RRL full and the robust per-site memory.
+- **Gate M staged defection** (`defect`, `defect_spot_check`): the most useful honest extractor
+  returns well-formed wrong results that still report success halfway through (replay only).
+- `paper/make_figure.py`: learning curves for the paper, replayed from the Gate M records.
 - **Paper draft** (`paper/`): `main.tex` ("Trust, Not Just Relevance"), `references.bib`
   built from arXiv metadata, and `make_tables.py`, which writes every results table and every
   number quoted in the text from `sim/results/*.json`. Build with
-  `python3 paper/make_tables.py && cd paper && tectonic main.tex`.
+  `python3 paper/make_tables.py && python3 paper/make_figure.py && cd paper && tectonic main.tex`.
+  Reframed after review: learned source trust is reported as a negative result.
 - **Gate F** (`sim/run_gate_matrix.py`): a leak-free, fully replayable MBPP benchmark. The
   corpus never contains a query's own solution; every (query, candidate) outcome is
   pre-computed into a JSONL outcome table, so all policies are replayed offline and

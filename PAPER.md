@@ -1,11 +1,11 @@
 # Paper plan
 
-Working title: **Trust, Not Just Relevance: Verifier-Anchored Tool Selection Under Partial
-Feedback and Tool Drift**
+Working title: **When Tools Over-Report Success: Verifier-Anchored Tool Selection Under Partial
+Feedback**
 
 **Draft:** [`paper/main.tex`](paper/main.tex) (PDF: `paper/main.pdf`). Every table and quoted
 number is generated from `sim/results/` by `paper/make_tables.py`; rebuild with
-`python3 paper/make_tables.py && cd paper && tectonic main.tex`. The author block is a
+`python3 paper/make_tables.py && python3 paper/make_figure.py && cd paper && tectonic main.tex`. The author block is a
 placeholder.
 
 This file tracks the paper built on this repository: the claim, what the evidence supports today,
@@ -21,45 +21,55 @@ change over time?
 
 ## Claim (narrow on purpose)
 
-RRL helps in a specific regime — feedback that is partially verified and selectively misleading,
-with new contexts appearing — and its gains shrink or reverse when every call is verified and
-contexts recur, or when tools change abruptly and feedback is trustworthy.
+Under partial verification, learners that take unverified success reports at face value adopt
+the tool that over-reports. Three training-free ingredients avoid it: discount unverified
+success, let only verified outcomes lock in a per-context choice, and start new contexts from each
+tool's global reputation. A learned model of each feedback source's reliability is *not* what
+drives the gains. The approach loses when every call is verified and contexts recur, when tools
+change abruptly and feedback is trustworthy, and gives no protection against a tool that defects
+after earning trust.
 
-## Novelty after the 2026-10-29 literature check
+## Reframing after the 2026-10-29 review
 
-Two recent papers cover RRL's two main ideas separately:
+The first draft claimed learned per-tool source trust (two-coin Dawid–Skene, `rrl/reliability.py`)
+as the main mechanism. A controlled ablation (`rrl_combined_ctx_verified_fixed`: the same layer
+with the fixed feedback rule) showed it differs from a fixed discount by −3.4 to +3.2 points across
+23 scenarios with unverified feedback, and is slightly *worse* in the case it was built for (Gate M
+with the poisoned server under spot checks). The paper now reports this as a negative result and
+keeps the pre-specified configuration as "RRL full". A staged-defection scenario (TrustShift-style)
+was added to Gate M; it erases RRL's advantage.
 
-- **RATED** (CIKM 2026, arXiv:2610.13889) already learns which tools work from execution feedback
-  with a contextual bandit, assuming the feedback is truthful.
-- **ESA** (EWRL 2026, arXiv:2603.13356) already learns per-source, per-context trust from sparse
-  ground-truth audits, with regret bounds, but has no LLM or tool application.
+## Novelty
 
-So the contribution is not a new estimator. It is (a) bringing audit-anchored source trust into
-reliability-aware tool selection for agents whose tools mislead through their descriptions and
-their own success reports, (b) per-context memory that only verified outcomes can lock in, and
-(c) the evaluation — live MCP servers, an LLM choosing from the tool list, partial verification,
-and an honest map of where simpler methods win. The paper should say this in its introduction.
+- **RATED** (CIKM 2026, arXiv:2610.13889) learns which tools work from execution feedback with a
+  contextual bandit, assuming the feedback is truthful.
+- **ESA** (EWRL 2026, arXiv:2603.13356) learns per-source, per-context trust from sparse
+  ground-truth audits, with regret bounds, but has no LLM or tool application. Its decoupling
+  theorem explains why a MemRL-style learner collapses under spot checks.
+
+The contribution is the finding that, for tool selection, anchoring memory to verified outcomes
+and discounting the rest is enough to avoid an over-reporting tool while learned trust changes
+little, plus the evaluation (live MCP servers, an LLM choosing from the tool list, partial
+verification, staged defection) and an honest map of where simpler methods win.
 
 ## Contributions
 
-1. **Per-item feedback trust.** A two-coin (Dawid–Skene) model of each feedback source's
-   sensitivity and specificity, learned against verified outcomes, globally and per tool
-   (`rrl/reliability.py`).
-2. **An online selection layer** combining relevance with Beta reputation, per-context counters
-   shrunk toward global ones, verified-success memory and change detection (`rrl/layer.py`,
-   `rrl/drift.py`).
-3. **A reproducible evaluation** under poisoned tool descriptions, partial verification,
-   unreliable feedback and tool evolution — six gates, including live MCP servers and an LLM
-   choosing from the tool list — that reports where simpler methods win.
+1. **A simple, training-free selection layer** combining relevance, Beta reputation, a discount
+   on unverified success, per-context counters shrunk toward global ones and verified-success
+   memory (`rrl/layer.py`, `rrl/feedback.py`).
+2. **A negative result on learned feedback trust** (`rrl/reliability.py`): per-tool trust is
+   within a few points of a fixed discount; global-only trust is harmful.
+3. **A reproducible evaluation** — six gates, including live MCP servers, an LLM choosing from the
+   tool list and staged defection — that reports where simpler methods win.
 
 ## What the evidence supports today
 
 | Supported | Not yet supported |
 |---|---|
-| Large gains over description-based selection, including Gemini choosing from the tool list, when a poisoned tool is present (Gate M) | Superiority over MemRL's official code |
-| Resistance to over-reporting tools under 20% spot checks, where a MemRL-style learner is fooled (Gates M, W) | Results on unmodified MCPTox / MCPEvol-Bench tasks or third-party MCP servers |
-| Far better accuracy on new contexts than per-context memory (Gates M, W) | Better adaptation than a fast-forgetting learner under abrupt change (Gate G: it is worse) |
-| Each component's contribution, by ablation | Calibration of source trust under correlated sources and biased audit sampling |
+| Large gains over description-based selection, including Gemini choosing from the tool list, when a poisoned tool is present (Gate M) | Superiority over MemRL's official code, RATED or an ESA-style aggregator |
+| Resistance to over-reporting tools under 20% spot checks, where a MemRL-style learner and a robust per-site memory are fooled (Gates M, W) | Results on unmodified MCPTox / MCPEvol-Bench tasks or third-party MCP servers |
+| Far better accuracy on new contexts than per-context memory (Gates M, W) | Any benefit of learned source trust over a fixed discount |
+| Each component's contribution, by ablation | Protection against staged defection; better adaptation than a fast-forgetting learner under abrupt change |
 
 ## Before submission (from the external review)
 
@@ -70,7 +80,8 @@ and an honest map of where simpler methods win. The paper should say this in its
 | 2 | Evaluate on MCPTox and MCPEvol-Bench (unmodified results reported separately from adapted ones), with Tool-Guard as a security baseline | To do |
 | 3 | A robust per-context memory baseline that survives transient failures | **Done** (`query_memory_robust`): beats RRL by 8–21 points when every call is verified; with 20% spot checks it is fooled and RRL beats it by 20–28 |
 | 4 | Source-trust validation: randomized vs. biased audits, deception concentrated on single tools, correlated sources; report calibration and false reputation updates | To do |
-| 5 | Change detection: recovery delay, false resets under stable conditions, gradual vs. abrupt change, against a fast-forgetting baseline | Partly (resets reported; delay and gradual drift to do) |
+| 5 | Change detection: recovery delay, false resets under stable conditions, gradual vs. abrupt change, against a fast-forgetting baseline | Partly (resets reported; costs 2–3 points without change; no help against staged defection; delay and gradual drift to do) |
+| 5b | Staged defection (TrustShift): a defence, e.g. change detection on a tool's agreement with the verifier | Scenario added; no defence yet |
 | 6 | Verify every citation | **Done** for all arXiv identifiers; venue details for non-arXiv works to add |
 | 7 | Separate benchmark weights (exploration 0.30) from the library default (0.10) in the text | Documented in RESULTS.md; report both in the paper |
 | 8 | Publish an archived, versioned release with the exact code, outcome records and tables | To do (see below) |

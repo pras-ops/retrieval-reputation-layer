@@ -1,0 +1,22 @@
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Overall / held-out success (\%) & Defection & Defection + spot \\
+\midrule
+Static reranker & 38.3 / 65.7 & 38.3 / 65.7 \\
+LLM picks from tool list & 40.0 / 61.8 & 40.0 / 61.8 \\
+Per-context memory & 66.7 / 64.4 & 63.0 / 64.4 \\
+Per-context memory, robust & \textbf{68.2} / 65.3 & \textbf{63.7} / 65.3 \\
+MemRL-style & 33.8 / 58.5 & 17.2 / 4.0 \\
+\midrule
+RRL (global) & 39.8 / 61.7 & 34.1 / 56.5 \\
+\textbf{RRL full} & 50.5 / 63.7 & 43.7 / 62.1 \\
+RRL full, fixed rule & 50.5 / 63.7 & 42.1 / 58.6 \\
+\textit{Best possible} & 83.6 / 82.2 & 83.6 / 82.2 \\
+\bottomrule
+\end{tabular}
+\caption{Staged defection on Gate M without the poisoned server.}
+\label{tab:defectclean}
+\end{table*}

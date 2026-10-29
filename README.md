@@ -21,11 +21,14 @@ RAG benchmarks.
 
 The ranking rule (similarity + learned usefulness) overlaps with MemRL (arXiv 2601.03192) and
 with RATED (CIKM 2026), which learns tool reliability from execution feedback; audit-anchored
-source trust has been studied in theory by ESA (EWRL 2026). What RRL contributes is combining
-**verifier-anchored, per-item trust in feedback** with tool selection and per-context memory, for
-agents whose tools can mislead through their descriptions or their own success reports — and an
-evaluation, including live MCP servers, of where that helps and where simpler methods win. See
-[PAPER.md](PAPER.md).
+source trust has been studied in theory by ESA (EWRL 2026). What RRL contributes is a
+**verifier-anchored** selection layer for agents whose tools can mislead through their
+descriptions or their own success reports: unverified success is discounted, only verified
+outcomes can lock in a per-context choice, and new contexts start from each tool's global
+reputation — plus an evaluation, including live MCP servers, of where that helps and where
+simpler methods win. A learned per-tool model of feedback-source trust (`SourceReliability`) is
+included and tested, but it is not what drives the gains: it stays within a few points of the
+fixed discount. See [PAPER.md](PAPER.md).
 
 > **What it is:** a reputation / usefulness-and-freshness layer for closed-loop retrieval.
 > **What it is not:** a better retriever, or a truth detector. It adds no value where queries
@@ -142,8 +145,9 @@ res = layer.rescore({"doc1": 0.9, "doc2": 0.4}, top_k=2)
 layer.record_feedback(res.response_id, s_behave=0.75, s_gt=1.0)
 ```
 
-The full configuration used in the benchmarks adds verifier-anchored source trust, change
-detection and per-context reputation:
+The full configuration used in the benchmarks adds learned source trust, change detection and
+per-context reputation (in our benchmarks the fixed discount, i.e. leaving out
+`SourceReliability`, does as well; see RESULTS.md):
 
 ```python
 from rrl import ChangeDetector, SourceReliability
@@ -380,8 +384,10 @@ configuration.
   small top-k; tune `epsilon`/`explore` to your top-k.
 - **Mostly established ideas.** Beta reputation, bandit exploration, Dawid–Skene source
   reliability and window-based change detection are all known; the ranking rule overlaps with
-  MemRL. What is specific to RRL is combining verifier-anchored, per-item trust with
-  outcome-driven selection, and evaluating where that helps and where it does not.
+  MemRL. What is specific to RRL is anchoring outcome-driven tool selection to verified calls,
+  and evaluating where that helps and where it does not.
+- **Staged defection.** A tool that behaves well until trusted and then returns wrong results
+  that still report success erases RRL's advantage (Gate M `defect` scenarios).
 
 ---
 

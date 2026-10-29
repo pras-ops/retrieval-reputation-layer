@@ -124,6 +124,9 @@ ABLATIONS = [
     "rrl_combined_ctx_conf",  # per-context counters + confidence-gated exploration
     "rrl_combined_e10",  # exploration weight 0.10 (the library default)
     "rrl_combined_e0",  # exploration off
+    # rrl_combined_ctx_verified with the fixed feedback rule (calculate_outcome: self-report
+    # capped at 0.75) instead of learned source reliability
+    "rrl_combined_ctx_verified_fixed",
 ]
 
 # Weights used by every RRL variant in the benchmarks: (sim, recent, long-term, explore).
@@ -537,6 +540,7 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
             "rrl_combined_ctx",
             "rrl_combined_ctx_verified",
             "rrl_combined_ctx_conf",
+            "rrl_combined_ctx_verified_fixed",
         )
         layer = ReputationLayer(
             CandidateStore(),
@@ -545,12 +549,12 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
             decay_unit_sec=1.0,
             reliability=(
                 SourceReliability(doc_strength=None if name == "rrl_combined_globalrel" else 4.0)
-                if combined
+                if combined and not name.endswith("_fixed")
                 else None
             ),
             change_detector=detector,
             confident_greedy=0.95 if name.endswith("_conf") else None,
-            stick_to_verified=name == "rrl_combined_ctx_verified",
+            stick_to_verified=name.startswith("rrl_combined_ctx_verified"),
         )
         blend_ce = name != "rrl" and name != "rrl_nodecay"
         explore = w_explore > 0
@@ -902,6 +906,19 @@ def summarize(per_seed: Dict[str, Dict[str, List[float]]], seeds: List[int]) -> 
         for a in ABLATIONS:
             if a in data:
                 comparisons[metric][f"{a}_vs_rrl_combined"] = paired(data["rrl_combined"], data[a])
+        # learned source reliability vs the fixed feedback rule, with and without the rest of RRL
+        if "rrl_combined_nocd" in data:
+            comparisons[metric]["rrl_combined_nocd_vs_rrl_ce"] = paired(
+                data["rrl_ce"], data["rrl_combined_nocd"]
+            )
+        fixed = "rrl_combined_ctx_verified_fixed"
+        if fixed in data:
+            comparisons[metric][f"rrl_combined_ctx_verified_vs_{fixed}"] = paired(
+                data[fixed], data["rrl_combined_ctx_verified"]
+            )
+            comparisons[metric][f"{fixed}_vs_query_memory_robust"] = paired(
+                data["query_memory_robust"], data[fixed]
+            )
     resets = {
         p: mean_ci([float(DIAGNOSTICS[p].get(s, 0)) for s in seeds])
         for p in names

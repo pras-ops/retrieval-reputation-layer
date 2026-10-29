@@ -21,6 +21,7 @@ LABEL = {
     "rrl_combined": "RRL (global)",
     "rrl_combined_ctx": "RRL + per-context",
     "rrl_combined_ctx_verified": "\\textbf{RRL full}",
+    "rrl_combined_ctx_verified_fixed": "RRL full, fixed rule",
     "oracle": "\\textit{Best possible}",
     "rrl_ce": "Relevance + reputation only",
     "rrl_combined_globalrel": "Global-only source trust",
@@ -43,6 +44,8 @@ SCEN = {
     "drift": "Drift",
     "drift_fooled": "Drift + fooled",
     "drift_sycophantic": "Drift + syco.",
+    "defect": "Defection",
+    "defect_spot_check": "Defection + spot",
 }
 
 
@@ -100,6 +103,64 @@ def table(name, caption, label, stem, scens, policies, heldout=True, best_from=N
 \\end{{table*}}
 """
     with open(os.path.join(OUT, name + ".tex"), "w") as f:
+        f.write(tex)
+
+
+TRUST_STEMS = [
+    ("gate_m_replay", "M"),
+    ("gate_m_replay_clean", "M clean"),
+    ("gate_w", "W"),
+    ("gate_t_toolbench", "T ToolBench"),
+    ("gate_t_toollens", "T ToolLens"),
+    ("gate_g_hard", "G"),
+]
+LEARNED = "rrl_combined_ctx_verified_vs_rrl_combined_ctx_verified_fixed"
+GLOBAL = "rrl_combined_globalrel_vs_rrl_combined"
+
+
+def trust_rows():
+    """Every scenario with unverified feedback: learned trust vs the fixed rule (RRL full), and
+    global-only vs per-tool trust (RRL global). Fully verified scenarios are skipped: there the
+    learning target is the verifier's result and the variants coincide."""
+    rows = []
+    for stem, gate in TRUST_STEMS:
+        for f in sorted(os.listdir(RES)):
+            if not (f.startswith(stem + "_") and f.endswith(".json")):
+                continue
+            sc = f[len(stem) + 1 : -5]
+            if stem == "gate_m_replay" and sc.startswith("clean_"):
+                continue
+            d = load(stem, sc)
+            ps = d["per_seed_overall"]
+            if ps["rrl_combined_ctx_verified"] == ps["rrl_combined_ctx_verified_fixed"]:
+                continue
+            rows.append((gate, sc, d["comparisons"]["overall"]))
+    return rows
+
+
+def fmt_diff(c):
+    lo, hi = c["ci95"]
+    v = f"{c['mean_diff'] * 100:+.1f}"
+    v = f"\\textbf{{{v}}}" if lo > 0 or hi < 0 else v
+    return f"{v} [{lo * 100:+.1f}, {hi * 100:+.1f}]"
+
+
+def trust_table():
+    body = []
+    for gate, sc, c in trust_rows():
+        name = SCEN.get(sc, sc.replace("_", " "))
+        body.append(f"{gate} & {name} & {fmt_diff(c[LEARNED])} & {fmt_diff(c[GLOBAL])} \\\\")
+    tex = (
+        "\\begin{table}[h]\n\\centering\n\\small\n\\begin{tabular}{llrr}\n\\toprule\n"
+        "Gate & Scenario & Learned $-$ fixed & Global-only $-$ per-tool \\\\\n\\midrule\n"
+        + "\n".join(body)
+        + "\n\\bottomrule\n\\end{tabular}\n"
+        "\\caption{Learned source trust against the fixed discount (RRL full), and global-only "
+        "against per-tool trust (RRL global), in every scenario with unverified feedback. Mean paired "
+        "difference in overall success (points) over 30 seeds with 95\\% CI; bold where the CI "
+        "excludes zero.}\n\\label{tab:trust}\n\\end{table}\n"
+    )
+    with open(os.path.join(OUT, "trust.tex"), "w") as f:
         f.write(tex)
 
 
@@ -197,6 +258,51 @@ def numbers():
     resets = load("gate_w", "stationary")["change_detector_resets"]
     m["WresetsOld"] = f"{resets['rrl_combined_cdold'][0]:.1f}"
     m["WresetsNew"] = f"{resets['rrl_combined'][0]:.1f}"
+    fixed = "rrl_combined_ctx_verified_fixed"
+    m["MspotFixed"] = pct(spot["overall"][fixed][0])
+    d = diff("gate_m_replay", "spot_check", f"rrl_combined_ctx_verified_vs_{fixed}")
+    m["MspotFullVsFixed"] = f"{d[0]:+.1f}"
+    m["MspotFullVsFixedCI"] = f"[{d[1]:+.1f}, {d[2]:+.1f}]"
+    m["MspotFixedLead"] = f"{-d[0]:.1f}"
+    m["MspotFixedLeadCI"] = f"[{-d[2]:.1f}, {-d[1]:.1f}]"
+    m["MspotCtxGain"] = pct(
+        spot["overall"]["rrl_combined_ctx_verified"][0] - spot["overall"]["rrl_combined"][0]
+    )
+    m["MverCtxGain"] = pct(
+        ver["overall"]["rrl_combined_ctx_verified"][0] - ver["overall"]["rrl_combined"][0]
+    )
+    for stem, key in (("gate_m_replay", "McdCost"), ("gate_w", "WcdCost")):
+        o = load(stem, "stationary")["overall"]
+        m[key] = pct(o["rrl_combined_nocd"][0] - o["rrl_combined"][0])
+    dv = load("gate_m_replay", "defect")["overall"]
+    ds = load("gate_m_replay", "defect_spot_check")["overall"]
+    m["MdefRRL"] = pct(dv["rrl_combined_ctx_verified"][0])
+    m["MdefRobust"] = pct(dv["query_memory_robust"][0])
+    m["MdefOracle"] = pct(dv["oracle"][0])
+    m["MdefSpotRRL"] = pct(ds["rrl_combined_ctx_verified"][0])
+    m["MdefSpotMemory"] = pct(ds["query_memory"][0])
+    m["MdefSpotFixed"] = pct(ds[fixed][0])
+    m["MdefSpotRobust"] = pct(ds["query_memory_robust"][0])
+    m["MdefSpotDrop"] = pct(
+        spot["overall"]["rrl_combined_ctx_verified"][0] - ds["rrl_combined_ctx_verified"][0]
+    )
+    m["MdefOracleDrop"] = pct(spot["overall"]["oracle"][0] - ds["oracle"][0])
+    m["MdefSpotNocd"] = pct(ds["rrl_combined_nocd"][0])
+    m["MdefSpotCd"] = pct(ds["rrl_combined"][0])
+    d = diff(
+        "gate_m_replay", "defect_spot_check", "rrl_combined_ctx_verified_vs_query_memory_robust"
+    )
+    m["MdefSpotVsRobust"] = f"{d[0]:+.1f}"
+    cs = load("gate_m_replay_clean", "defect_spot_check")["overall"]
+    m["McleanDefSpotRRL"] = pct(cs["rrl_combined_ctx_verified"][0])
+    m["McleanDefSpotRobust"] = pct(cs["query_memory_robust"][0])
+    tr = [c[LEARNED] for _, _, c in trust_rows()]
+    m["TrustN"] = str(len(tr))
+    m["TrustBetter"] = str(sum(c["ci95"][0] > 0 for c in tr))
+    m["TrustWorse"] = str(sum(c["ci95"][1] < 0 for c in tr))
+    m["TrustMin"] = f"{min(c['mean_diff'] for c in tr) * 100:+.1f}"
+    m["TrustMax"] = f"{max(c['mean_diff'] for c in tr) * 100:+.1f}"
+    m["TrustMaxAbs"] = f"{max(abs(c['mean_diff']) for c in tr) * 100:.1f}"
     with open(os.path.join(OUT, "numbers.tex"), "w") as f:
         for k, v in m.items():
             f.write(f"\\newcommand{{\\{k}}}{{{v}}}\n")
@@ -211,6 +317,7 @@ def main():
         "memrl_q",
         "rrl_combined",
         "rrl_combined_ctx_verified",
+        "rrl_combined_ctx_verified_fixed",
         "oracle",
     ]
     mcp_pol = [
@@ -221,6 +328,7 @@ def main():
         "memrl_q",
         "rrl_combined",
         "rrl_combined_ctx_verified",
+        "rrl_combined_ctx_verified_fixed",
         "oracle",
     ]
     table(
@@ -284,6 +392,7 @@ def main():
         "rrl_combined",
         "rrl_combined_ctx",
         "rrl_combined_ctx_verified",
+        "rrl_combined_ctx_verified_fixed",
     ]
     table(
         "ablation_m",
@@ -294,6 +403,25 @@ def main():
         ["stationary", "spot_check", "update", "update_spot_check"],
         abl,
         best_from=abl,
+    )
+    trust_table()
+    table(
+        "gate_m_defect",
+        "Staged defection on Gate M: halfway through, the most useful honest extractor starts "
+        "returning well-formed wrong results while still reporting success. Held-out shops come "
+        "after the defection.",
+        "tab:defect",
+        "gate_m_replay",
+        ["defect", "defect_spot_check"],
+        mcp_pol,
+    )
+    table(
+        "gate_m_clean_defect",
+        "Staged defection on Gate M without the poisoned server.",
+        "tab:defectclean",
+        "gate_m_replay_clean",
+        ["defect", "defect_spot_check"],
+        mcp_pol,
     )
     live_table()
     numbers()

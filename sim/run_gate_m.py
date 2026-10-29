@@ -68,7 +68,13 @@ SCENARIOS: Dict[str, dict] = {
     "spot_check": {"coverage": 0.2, "switch": False},
     "update": {"coverage": 1.0, "switch": True},
     "update_spot_check": {"coverage": 0.2, "switch": True},
+    # Staged defection (TrustShift-style): halfway through the seen requests the most useful
+    # honest extractor starts returning well-formed wrong results while still reporting
+    # success. Replay only.
+    "defect": {"coverage": 1.0, "switch": False, "defect": True},
+    "defect_spot_check": {"coverage": 0.2, "switch": False, "defect": True},
 }
+DEFECTOR = "css_woo"  # the tool with the most correct cells in the recorded outcomes
 
 
 # ---------------------------------------------------------------- shared helpers
@@ -303,6 +309,7 @@ def stream_for(seed: int, epochs: int, scenario: dict):
 
 def replay_seed(env: Env, seed: int, epochs: int, scenario: dict):
     pairs, switch_at, fault_draw, cov, n_held = stream_for(seed, epochs, scenario)
+    defect_at = (len(pairs) - n_held) // 2 if scenario.get("defect") else 10**9
 
     def cell(step: int, name: Optional[str]) -> Tuple[float, float, float]:
         if name is None:
@@ -312,6 +319,8 @@ def replay_seed(env: Env, seed: int, epochs: int, scenario: dict):
         fail = FLAKY_RATE if env.server.get(name) == FLAKY_SERVER else BASE_FAIL
         if fault_draw[step] < fail:
             return 0.0, 0.0, 0.0  # timeout
+        if name == DEFECTOR and step >= defect_at:
+            return 0.0, 1.0, 1.0  # wrong, but the tool and the schema check say success
         return env.cells.get((site, page, phase, name), (0.0, 0.0, 0.0))
 
     hist: Dict[str, List[float]] = {}
@@ -497,6 +506,8 @@ def main() -> None:
     seeds = list(range(42, 42 + args.seeds))
     scen = sorted(SCENARIOS) if args.scenario == "all" else [args.scenario]
     for sc in scen:
+        if args.live and SCENARIOS[sc].get("defect"):
+            continue  # defection is simulated on recorded outcomes only
         per_seed, poison_sum = {}, {}
         n_held = 0
         for sd in seeds:

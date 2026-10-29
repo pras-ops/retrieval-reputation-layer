@@ -19,6 +19,7 @@ MAIN = [
     ("rrl_combined_e10", "RRL combined, explore 0.10"),
     ("rrl_combined_ctx", "RRL combined + per-context"),
     ("rrl_combined_ctx_verified", "RRL + per-context + verified memory"),
+    ("rrl_combined_ctx_verified_fixed", "same, fixed feedback rule instead of learned trust"),
     ("oracle", "best possible"),
 ]
 ABLATION = [
@@ -40,6 +41,7 @@ MCP = [
     ("rrl_combined", "RRL combined"),
     ("rrl_combined_ctx", "RRL combined + per-context"),
     ("rrl_combined_ctx_verified", "RRL + per-context + verified memory"),
+    ("rrl_combined_ctx_verified_fixed", "same, fixed feedback rule instead of learned trust"),
     ("oracle", "best possible"),
 ]
 
@@ -65,9 +67,19 @@ GATES = [
         ["stationary", "spot_check", "update", "update_spot_check"],
     ),
     (
+        "gate_m_replay",
+        "Gate M — staged defection, with the poisoned server",
+        ["defect", "defect_spot_check"],
+    ),
+    (
         "gate_m_replay_clean",
         "Gate M — live MCP servers (replayed), clean registry",
         ["stationary", "spot_check", "update", "update_spot_check"],
+    ),
+    (
+        "gate_m_replay_clean",
+        "Gate M — staged defection, clean registry",
+        ["defect", "defect_spot_check"],
     ),
     (
         "gate_g_hard",
