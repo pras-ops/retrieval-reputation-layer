@@ -158,6 +158,72 @@ class TestClusterShrinkage(unittest.TestCase):
         self.assertEqual((top_x, top_y), ("a", "b"))
 
 
+class TestConfidentGreedy(unittest.TestCase):
+    def _scores(self, layer):
+        return {
+            tuple(layer.rescore({"a": 1.0, "b": 1.0}, top_k=2, explore=True, epsilon=0.0).results)
+            for _ in range(10)
+        }
+
+    def test_stops_exploring_once_the_leader_is_clear(self):
+        store = CandidateStore()
+        store.add_candidate(Candidate(id="a", content="", alpha=40.0, beta=1.0))
+        store.add_candidate(Candidate(id="b", content="", alpha=1.0, beta=40.0))
+        layer = ReputationLayer(store, confident_greedy=0.95)
+        self.assertEqual(len(self._scores(layer)), 1)  # no random exploration term
+
+    def test_keeps_exploring_while_uncertain(self):
+        store = CandidateStore()
+        store.add_candidate(Candidate(id="a", content="", alpha=2.0, beta=1.0))
+        store.add_candidate(Candidate(id="b", content="", alpha=1.0, beta=2.0))
+        layer = ReputationLayer(store, confident_greedy=0.95)
+        self.assertGreater(len(self._scores(layer)), 1)
+
+    def test_off_by_default(self):
+        store = CandidateStore()
+        store.add_candidate(Candidate(id="a", content="", alpha=40.0, beta=1.0))
+        store.add_candidate(Candidate(id="b", content="", alpha=1.0, beta=40.0))
+        self.assertGreater(len(self._scores(ReputationLayer(store))), 1)
+
+
+class TestStickToVerified(unittest.TestCase):
+    def _layer(self):
+        store = CandidateStore()
+        layer = ReputationLayer(store, gamma=1.0, stick_to_verified=True)
+        return store, layer
+
+    def _choose(self, layer, doc_scores, site="x"):
+        return layer.rescore(doc_scores, top_k=1, explore=True, cluster_id=site)
+
+    def test_verified_success_locks_in_until_a_verified_failure(self):
+        _, layer = self._layer()
+        sims = {"a": 0.2, "b": 1.0}
+        r = layer.rescore({"a": 0.2}, top_k=1, explore=False, cluster_id="x")
+        layer.record_feedback(r.response_id, s_gt=1.0)
+        picks = {self._choose(layer, sims).results[0][0] for _ in range(20)}
+        self.assertEqual(picks, {"a"})  # despite b's higher relevance, and no exploration
+
+        r = self._choose(layer, sims)
+        layer.record_feedback(r.response_id, s_gt=0.0)
+        self.assertEqual(self._choose(layer, {"a": 0.2, "b": 1.0}).results[0][0], "b")
+
+    def test_unverified_success_does_not_lock_in(self):
+        _, layer = self._layer()
+        r = layer.rescore({"a": 0.2}, top_k=1, explore=False, cluster_id="x")
+        layer.record_feedback(r.response_id, s_behave=1.0, s_judge=1.0)
+        picks = {self._choose(layer, {"a": 0.2, "b": 1.0}).results[0][0] for _ in range(20)}
+        self.assertIn("b", picks)
+
+    def test_lock_is_per_context(self):
+        _, layer = self._layer()
+        r = layer.rescore({"a": 0.2}, top_k=1, explore=False, cluster_id="x")
+        layer.record_feedback(r.response_id, s_gt=1.0)
+        picks = {
+            self._choose(layer, {"a": 0.2, "b": 1.0}, site="y").results[0][0] for _ in range(20)
+        }
+        self.assertIn("b", picks)
+
+
 class TestLayerIntegration(unittest.TestCase):
     def test_skips_update_from_untrusted_sources(self):
         store = CandidateStore()

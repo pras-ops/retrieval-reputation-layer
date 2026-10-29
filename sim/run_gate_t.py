@@ -350,7 +350,7 @@ def heldout_summary(per_seed, seeds, n_tail) -> dict:
         "pass_rate": {p: mean_ci(v) for p, v in rates.items()},
         "comparisons": {
             f"{a}_vs_{b}": paired(rates[b], rates[a])
-            for a in ("rrl_combined", "rrl_combined_ctx")
+            for a in ("rrl_combined", "rrl_combined_ctx", "rrl_combined_ctx_verified")
             for b in ("static_ce", "query_memory", "memrl_q")
         },
     }

@@ -37,6 +37,9 @@ Policies (all pick 1 of the same 5 candidates per step):
                  detection (rrl/drift.py): the combined score
   rrl_combined_ctx  rrl_combined with counters per request, shrunk toward each document's
                  global counters (ReputationLayer cluster_id)
+  rrl_combined_ctx_verified  rrl_combined_ctx that keeps a tool for a request once the
+                 verifier confirmed it worked there, until a verified failure
+                 (ReputationLayer stick_to_verified)
   rrl_query      query-level Beta counters shrunk toward the document's global reputation
                  (hierarchical / empirical-Bayes), Thompson sampling, reliability-weighted
                  feedback, reranker-blended similarity
@@ -100,6 +103,7 @@ POLICIES = [
     "rrl_ce",
     "rrl_combined",
     "rrl_combined_ctx",
+    "rrl_combined_ctx_verified",
     "rrl_query",
     "oracle",
 ]
@@ -110,6 +114,8 @@ ABLATIONS = [
     "rrl_combined_nocd",  # no change detection
     "rrl_combined_cdlong",  # change detection also resets the long-term counters
     "rrl_combined_cdold",  # the original detector: window 4, fixed 0.6 threshold
+    "rrl_combined_conf",  # confidence-gated exploration, without per-context counters
+    "rrl_combined_ctx_conf",  # per-context counters + confidence-gated exploration
     "rrl_combined_e10",  # exploration weight 0.10 (the library default)
     "rrl_combined_e0",  # exploration off
 ]
@@ -476,6 +482,7 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
 
     if (
         name in ("rrl", "rrl_nodecay", "rrl_ce", "rrl_combined", "rrl_combined_ctx")
+        or name == "rrl_combined_ctx_verified"
         or name in ABLATIONS
     ):
         combined = name.startswith("rrl_combined")
@@ -486,8 +493,14 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
             detector = ChangeDetector(window=4, threshold=0.6)
         else:
             detector = ChangeDetector(reset_long_term=name == "rrl_combined_cdlong")
-        # rrl_combined_ctx keeps counters per request (shrunk toward each tool's global ones).
-        per_context = name == "rrl_combined_ctx"
+        # rrl_combined_ctx keeps counters per request (shrunk toward each tool's global ones);
+        # *_conf stops exploring for a request once its leader is clear (95%); *_verified keeps
+        # a tool for a request once the verifier confirmed it worked there.
+        per_context = name in (
+            "rrl_combined_ctx",
+            "rrl_combined_ctx_verified",
+            "rrl_combined_ctx_conf",
+        )
         layer = ReputationLayer(
             CandidateStore(),
             weights=BENCH_WEIGHTS[:3] + (w_explore,),
@@ -499,6 +512,8 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
                 else None
             ),
             change_detector=detector,
+            confident_greedy=0.95 if name.endswith("_conf") else None,
+            stick_to_verified=name == "rrl_combined_ctx_verified",
         )
         blend_ce = name != "rrl" and name != "rrl_nodecay"
         explore = w_explore > 0
@@ -831,6 +846,15 @@ def summarize(per_seed: Dict[str, Dict[str, List[float]]], seeds: List[int]) -> 
             "rrl_combined_ctx_vs_query_memory": paired(
                 data["query_memory"], data["rrl_combined_ctx"]
             ),
+            "rrl_combined_ctx_verified_vs_rrl_combined_ctx": paired(
+                data["rrl_combined_ctx"], data["rrl_combined_ctx_verified"]
+            ),
+            "rrl_combined_ctx_verified_vs_query_memory": paired(
+                data["query_memory"], data["rrl_combined_ctx_verified"]
+            ),
+            "rrl_combined_ctx_verified_vs_memrl_q": paired(
+                data["memrl_q"], data["rrl_combined_ctx_verified"]
+            ),
         }
         for a in ABLATIONS:
             if a in data:
@@ -884,9 +908,17 @@ def plot(per_seed, seeds, path, title="Gate F (MBPP, leak-free, full outcome tab
         import matplotlib.pyplot as plt
     except ImportError:
         return
-    shown = ["static_ce", "query_memory", "memrl_q", "rrl_combined", "rrl_query", "oracle"]
+    shown = [
+        "static_ce",
+        "llm_picks",
+        "query_memory",
+        "memrl_q",
+        "rrl_combined",
+        "rrl_combined_ctx_verified",
+        "oracle",
+    ]
     plt.figure(figsize=(10, 6))
-    for p in shown:
+    for p in [x for x in shown if x in per_seed[seeds[0]]]:
         n = len(per_seed[seeds[0]][p])
         curve = [sum(per_seed[s][p][i] for s in seeds) / len(seeds) for i in range(n)]
         w = 30

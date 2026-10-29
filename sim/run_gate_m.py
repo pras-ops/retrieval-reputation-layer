@@ -409,7 +409,13 @@ def report(per_seed, seeds, poison, n_held, title, stem, extra: dict) -> None:
     summary = summarize(per_seed, seeds)
     if "llm_picks" in per_seed[seeds[0]]:
         llm = [sum(per_seed[s]["llm_picks"]) / len(per_seed[s]["llm_picks"]) for s in seeds]
-        for b in ("rrl_combined", "rrl_combined_e10", "rrl_combined_ctx", "memrl_q"):
+        for b in (
+            "rrl_combined",
+            "rrl_combined_e10",
+            "rrl_combined_ctx",
+            "rrl_combined_ctx_verified",
+            "memrl_q",
+        ):
             if b in per_seed[seeds[0]]:
                 other = [sum(per_seed[s][b]) / len(per_seed[s][b]) for s in seeds]
                 summary["comparisons"]["overall"][f"{b}_vs_llm_picks"] = paired(llm, other)

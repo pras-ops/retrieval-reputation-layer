@@ -5,7 +5,9 @@ similarity dictionary outputs and updates document reputations based on outcomes
 """
 
 from dataclasses import dataclass
+import math
 import random
+from statistics import NormalDist
 import uuid
 from typing import Dict, List, Optional, Tuple
 
@@ -40,6 +42,8 @@ class ReputationLayer:
         reliability: Optional[SourceReliability] = None,
         change_detector: Optional[ChangeDetector] = None,
         cluster_strength: float = 4.0,
+        confident_greedy: Optional[float] = None,
+        stick_to_verified: bool = False,
     ):
         """
         reliability:     learn each feedback source's accuracy against the verifier and
@@ -51,11 +55,21 @@ class ReputationLayer:
         cluster_strength: with a cluster_id, how much evidence the cluster's own counters
                          need before they outweigh the document's global ones: the weight
                          on the cluster is n / (n + cluster_strength), n = its evidence.
+        confident_greedy: if set (e.g. 0.95), stop exploring for a request once the top
+                         candidate's reputation beats every other candidate's with at least
+                         this probability (normal approximation to the Beta posteriors).
+                         Exploration then resumes by itself when outcomes erode that lead.
+        stick_to_verified: with a cluster_id, once the verifier has confirmed that a
+                         candidate worked in that cluster, rank it first and do not explore,
+                         until a verified failure there. Unverified feedback never locks a
+                         candidate in.
         """
         self.store = store
         self.reliability = reliability
         self.change_detector = change_detector
         self.cluster_strength = cluster_strength
+        self.confident_greedy = confident_greedy
+        self.stick_to_verified = stick_to_verified
         self.weights = weights
         self.robust_estimator_mode = robust_estimator_mode
         self.use_optimistic_prior = use_optimistic_prior
@@ -119,6 +133,8 @@ class ReputationLayer:
             eff_cluster_id = "cluster_0"
 
         ranked_candidates = []
+        scored = []
+        verified_ok: set = set()
         for cid, sim in sims.items():
             candidate = self.store.get_candidate(cid)
             if not candidate:
@@ -193,17 +209,30 @@ class ReputationLayer:
 
             # Calculate total score using configured weights
             score = w_sim * sim + w_c * C_robust + w_p * P_i
+            scored.append((candidate.id, score, sim, alpha, beta, rarity_bonus))
+            if (
+                self.stick_to_verified
+                and eff_cluster_id
+                and cluster_counters.get(eff_cluster_id, {}).get("last_verified") == 1.0
+            ):
+                verified_ok.add(candidate.id)
+
+        if explore and self.confident_greedy is not None and self._confident(scored):
+            explore = False
+        if verified_ok:
+            explore = False
+
+        for cid_i, score, sim, alpha, beta, rarity_bonus in scored:
             if explore:
                 alpha_val = max(1e-5, alpha)
                 beta_val = max(1e-5, beta)
                 ts_sample = random.betavariate(alpha_val, beta_val)
                 # Scale exploration by similarity score to prevent exploring completely irrelevant candidates
                 score += w_explore * sim * (ts_sample + rarity_bonus)
+            ranked_candidates.append((cid_i, score, sim))
 
-            ranked_candidates.append((candidate.id, score, sim))
-
-        # Sort by total score descending
-        ranked_candidates.sort(key=lambda x: x[1], reverse=True)
+        # Sort by total score descending; verified-good candidates for this cluster first.
+        ranked_candidates.sort(key=lambda x: (x[0] in verified_ok, x[1]), reverse=True)
         results = ranked_candidates[:top_k]
 
         # Epsilon-greedy exploration over the full candidate set
@@ -239,6 +268,29 @@ class ReputationLayer:
             self.store.save_pending(response_id, shares, eff_cluster_id, now)
 
         return RescoreResult(results=results, response_id=response_id)
+
+    def _confident(self, scored) -> bool:
+        """Whether the exploitation leader's reputation beats every other candidate's with
+        probability >= confident_greedy."""
+        if len(scored) < 2:
+            return True
+        leader = max(scored, key=lambda x: x[1])
+
+        def moments(a: float, b: float):
+            n = a + b
+            return a / n, a * b / (n * n * (n + 1.0))
+
+        m_l, v_l = moments(leader[3], leader[4])
+        threshold = float(self.confident_greedy or 0.0)
+        for other in scored:
+            if other is leader:
+                continue
+            m_o, v_o = moments(other[3], other[4])
+            sd = math.sqrt(v_l + v_o)
+            p = NormalDist().cdf((m_l - m_o) / sd) if sd > 0 else float(m_l > m_o)
+            if p < threshold:
+                return False
+        return True
 
     def record_feedback(
         self,
@@ -279,6 +331,12 @@ class ReputationLayer:
             robust_estimator_mode=self.robust_estimator_mode,
             outcome_fn=outcome_fn,
         )
+        if self.stick_to_verified and cluster_id is not None and s_gt is not None:
+            for cid in shares:
+                candidate = self.store.get_candidate(cid)
+                if candidate is not None:
+                    candidate.get_cluster(cluster_id)["last_verified"] = 1.0 if s_gt > 0.5 else 0.0
+                    self.store.update_candidate(candidate)
         if self.change_detector is not None:
             for cid in shares:
                 candidate = self.store.get_candidate(cid)

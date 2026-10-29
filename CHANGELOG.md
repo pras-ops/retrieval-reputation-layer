@@ -74,6 +74,15 @@ All notable changes to this project are documented here. The format is based on
 - `ChangeDetector.resets` and `ChangeDetector(reset_long_term=True)`; `ChangeDetector.check()`
   takes a cluster id and then checks that cluster's own counters.
 - `ReputationLayer(cluster_strength=...)`.
+- `ReputationLayer(stick_to_verified=True)`: with a cluster id, once the verifier confirms a
+  candidate worked in that cluster it is ranked first without exploration, until a verified
+  failure there. Unverified feedback never locks a candidate in. In Gates W and M it lifts RRL by
+  2–9 points and closes most of the gap to per-context "reuse what worked".
+- `ReputationLayer(confident_greedy=0.95)`: stop exploring once the leader's reputation beats
+  every other candidate's with that probability. It had no measurable effect in any gate (an
+  untried candidate's posterior is too wide to rule out) and is kept as an ablation.
+- Policies `rrl_combined_ctx_verified`, and ablations `rrl_combined_conf` and
+  `rrl_combined_ctx_conf`.
 - `pandas` and `pyarrow` in the `dev` extra, for Gate T's build step.
 
 ### Fixed
@@ -86,6 +95,8 @@ All notable changes to this project are documented here. The format is based on
   feedback signals even when the verifier ran, instead of using it. That under-stated them, most
   in Gate W, so earlier claims that RRL beat MemRL-style there by about 50 points were wrong.
   They now use the verifier whenever it ran; all results were re-run and RESULTS.md corrected.
+- Gate M's MCP client no longer crashes when a call that already timed out gets its reply after
+  the session closed; the plot no longer fails when a policy (the oracle in live runs) is absent.
 - `Retriever` broke ties in fused scores in hash order, so candidate rankings could differ
   between runs of the same code. Ties are now broken by candidate id.
 

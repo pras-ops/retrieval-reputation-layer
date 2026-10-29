@@ -71,9 +71,15 @@ class McpPool:
 
         async def halt():
             self._stops.pop(role).set()
-            await asyncio.wait_for(self._done.pop(role), 30)
+            try:
+                await asyncio.wait_for(self._done.pop(role), 30)
+            except BaseException:
+                # A reply to a call that already timed out can arrive after the session
+                # closed; the SDK then raises while shutting down. The server is gone either way.
+                pass
 
         self._run(halt(), 60)
+        self.sessions.pop(role, None)
 
     def restart(self, role: str, extra_env: Optional[Dict[str, str]] = None) -> None:
         self.stop(role)

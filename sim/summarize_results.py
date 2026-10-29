@@ -17,6 +17,7 @@ MAIN = [
     ("rrl_combined", "RRL combined"),
     ("rrl_combined_e10", "RRL combined, explore 0.10"),
     ("rrl_combined_ctx", "RRL combined + per-context"),
+    ("rrl_combined_ctx_verified", "RRL + per-context + verified memory"),
     ("oracle", "best possible"),
 ]
 ABLATION = [
@@ -25,6 +26,8 @@ ABLATION = [
     ("rrl_combined_nocd", "combined, no change detection"),
     ("rrl_combined_cdold", "combined, old detector (w=4, 0.6)"),
     ("rrl_combined_e0", "combined, exploration off"),
+    ("rrl_combined_conf", "combined, confidence-gated exploration"),
+    ("rrl_combined_ctx_conf", "per-context + confidence-gated exploration"),
 ]
 
 MCP = [
@@ -34,6 +37,7 @@ MCP = [
     ("memrl_q", "MemRL-style"),
     ("rrl_combined", "RRL combined"),
     ("rrl_combined_ctx", "RRL combined + per-context"),
+    ("rrl_combined_ctx_verified", "RRL + per-context + verified memory"),
     ("oracle", "best possible"),
 ]
 

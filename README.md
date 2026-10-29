@@ -150,6 +150,7 @@ layer = ReputationLayer(
     gamma=1.0,  # no time decay; changes are detected instead
     reliability=SourceReliability(),  # trust users / judges / self-reports per item
     change_detector=ChangeDetector(),  # reset an item when its results shift
+    stick_to_verified=True,  # keep a verifier-confirmed tool per context
 )
 res = layer.rescore(
     {"jsonld_extractor": 0.8, "universal_extractor": 0.9},  # relevance, e.g. reranker-blended
@@ -291,7 +292,7 @@ All replay offline from committed data, 30 seeds, paired statistics, with ablati
 
 | Gate | What it tests | Headline |
 |---|---|---|
-| **M** — live MCP servers (`sim/run_gate_m.py`) | Real MCP tools over stdio on local servers; a poisoned server with an injected instruction; a mid-run tool update; a flaky server; Gemini picking from the tool list; fully live runs agree with the replay | Reranker and Gemini pick the poisoned tool (0–8% solved); **RRL 41–58%**. With 20% spot checks MemRL-style is fooled (3–4%) and RRL is best on new sites (44–69% vs 18–20%). **With every call verified, per-site "reuse what worked" wins** (63–78%) |
+| **M** — live MCP servers (`sim/run_gate_m.py`) | Real MCP tools over stdio on local servers; a poisoned server with an injected instruction; a mid-run tool update; a flaky server; Gemini picking from the tool list; fully live runs agree with the replay | Reranker and Gemini pick the poisoned tool (0–8% solved); **RRL 43–67%**. With 20% spot checks MemRL-style is fooled (3–4%) and RRL is best on new sites (53–73% vs 18–20%). With every call verified, per-site "reuse what worked" still leads by 4–6 points (11–16 without the poisoned server) |
 | **T** — tool selection (`sim/run_gate_t.py`) | Real ToolRet requests and tool descriptions; tool updates, poisoned twins, flaky tools, held-out requests | Learning beats the static reranker (≈30% → 41–59%); **RRL and MemRL-style are close** (−2.4 to +4.6 points at exploration 0.10) |
 | **W** — web-scraping tools (`sim/run_gate_w.py`) | 8 executable extractors on 30 generated shops; tools' own success reports; redesigns; held-out sites | Same pattern as M: RRL resists over-reporting tools under sparse verification and generalizes to new sites; per-site memory wins when every call is verified |
 | **G** — private-API docs (`sim/run_gate_g.py`) | Real Gemini code against a generated library; poisoned guides; API switch | About level with MemRL-style without drift; **MemRL-style adapts 9–21 points better** after an API switch |
@@ -299,8 +300,10 @@ All replay offline from committed data, 30 seeds, paired statistics, with ablati
 
 **Where RRL helps:** selecting among tools whose descriptions or self-reports can mislead, with
 only some calls verifiable, and with new contexts appearing. **Where it does not:** when every
-call is verified and contexts recur (keep a per-context memory), and under abrupt changes with
-trustworthy feedback (a fast-forgetting average adapts sooner).
+call is verified, contexts recur and no tool misleads (a per-context memory is simpler and
+better), and under abrupt changes with trustworthy feedback (a fast-forgetting average adapts
+sooner). The recommended configuration adds `stick_to_verified=True` with a per-context
+`cluster_id`, which closes most of the gap to per-context memory.
 
 **Change detection is a trade-off:** the default z-test detector avoids false resets, the
 original fast detector (`ChangeDetector(window=4, threshold=0.6)`) adapts faster to abrupt
@@ -459,8 +462,9 @@ see [RELATED_WORK.md](RELATED_WORK.md) for the honest gap list.
 
 1. **Third-party MCP evaluation.** Run RRL as the tool-selection layer on third-party MCP
    servers and benchmarks (MCPEvol-Bench, MCPTox environments), and compare with MemRL's code.
-2. **Exploit recurring contexts better.** Per-context "reuse what worked" beats RRL when every
-   call is verified; less exploration once a context's best tool is known should close that gap.
+2. **Exploit recurring contexts better.** `stick_to_verified` closed most of the gap to
+   per-context "reuse what worked" when every call is verified, but not all of it (4–16 points
+   remain); a confidence gate on exploration did not help at all.
 3. **Change detection that is both fast and quiet** — e.g. per-context detection or a CUSUM /
    Page-Hinkley test — to close the gap to MemRL-style under abrupt changes.
 4. **Strong-stack comparison.** *Strong Stack* vs *Strong Stack + RRL* (hybrid retrieval +
