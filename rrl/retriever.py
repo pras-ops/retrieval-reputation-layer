@@ -68,7 +68,7 @@ class Retriever:
         self,
         store: CandidateStore,
         k_rrf: int = 60,
-        weights: Tuple[float, float, float, float] = (0.70, 0.20, 0.10, 0.0),
+        weights: Tuple[float, float, float, float] = (0.70, 0.20, 0.10, 0.10),
         model_name: str = "all-MiniLM-L6-v2",
         model: Optional[Any] = None,
         robust_estimator_mode: str = "beta",

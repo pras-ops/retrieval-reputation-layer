@@ -5,7 +5,7 @@ confidence-weighted update step (κ) with exponential decay (γ).
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 from .store import CandidateStore, _decay
 
 
@@ -329,11 +329,19 @@ def update_counters_with_signals(
     use_adt_denoising: bool = False,
     robust_estimator_mode: str = "beta",
     cluster_id: Optional[str] = None,
+    y_override: Optional[float] = None,
+    outcome_fn: Optional[Callable[[str], Optional[float]]] = None,
 ) -> None:
     """
     Updates Beta-counters for a set of candidates using pre-computed credit shares
     and a joint OutcomeSignals block, calculating candidate-specific outcomes
     based on their individual liar-counter trust scores.
+
+    y_override: use this outcome for every candidate instead of calculate_outcome()
+    (e.g. one combined by SourceReliability). The liar counter still uses `signals`.
+    outcome_fn: candidate id -> outcome, for outcomes that differ per document (e.g.
+    per-document source reliability); None skips that candidate. Takes precedence over
+    y_override.
     """
     if not shares:
         return
@@ -354,7 +362,12 @@ def update_counters_with_signals(
             trust_score = 1.0 - max(0.0, min(1.0, candidate.fooled / candidate.verified))
 
         # 2. Calculate candidate-specific outcome y
-        y = calculate_outcome(signals, trust_score=trust_score)
+        if outcome_fn is not None:
+            y = outcome_fn(cid)
+        elif y_override is not None:
+            y = y_override
+        else:
+            y = calculate_outcome(signals, trust_score=trust_score)
         if y is None:
             continue
 

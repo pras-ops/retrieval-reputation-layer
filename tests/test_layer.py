@@ -1,5 +1,6 @@
 import unittest
 import os
+import random
 import sys
 import tempfile
 import subprocess
@@ -107,6 +108,20 @@ class TestLayerLogic(unittest.TestCase):
         self.assertIsNotNone(cand)
         self.assertEqual(cand.id, "unknown")
         self.assertEqual(cand.content, "")
+
+    def test_default_weights_enable_thompson_exploration(self):
+        # Regression: the default exploration weight used to be 0.0, so the advertised
+        # Thompson-sampling term never contributed to the score.
+        store = CandidateStore()
+        layer = ReputationLayer(store)
+        self.assertGreater(layer.weights[3], 0.0)
+
+        random.seed(0)
+        scores = {
+            layer.rescore({"doc": 1.0}, top_k=1, explore=True, epsilon=0.0).results[0][1]
+            for _ in range(20)
+        }
+        self.assertGreater(len(scores), 1)
 
     def test_lazy_imports_isolation(self):
         # Verify that sentence_transformers is NOT imported upon loading rrl / ReputationLayer

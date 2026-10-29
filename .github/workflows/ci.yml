@@ -43,3 +43,9 @@ jobs:
 
       - name: Run recurring gate self-test (smoke test)
         run: python3 sim/run_gate_recurring.py --selftest
+
+      - name: Run full-outcome-table gate self-test (smoke test)
+        run: python3 sim/run_gate_matrix.py --selftest
+
+      - name: Run private-API gate self-test (smoke test)
+        run: python3 sim/run_gate_g.py --selftest

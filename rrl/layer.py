@@ -9,6 +9,8 @@ import random
 import uuid
 from typing import Dict, List, Optional, Tuple
 
+from .drift import ChangeDetector
+from .reliability import SourceReliability
 from .store import Candidate, CandidateStore, _decay
 from .feedback import (
     OutcomeSignals,
@@ -29,14 +31,25 @@ class ReputationLayer:
         self,
         store: CandidateStore,
         *,
-        weights: Tuple[float, float, float, float] = (0.55, 0.30, 0.15, 0.0),
+        weights: Tuple[float, float, float, float] = (0.55, 0.30, 0.15, 0.10),
         robust_estimator_mode: str = "beta",
         use_optimistic_prior: bool = True,
         gamma: float = 0.98,
         decay_unit_sec: float = 86400.0,
         use_clustering: bool = False,
+        reliability: Optional[SourceReliability] = None,
+        change_detector: Optional[ChangeDetector] = None,
     ):
+        """
+        reliability:     learn each feedback source's accuracy against the verifier and
+                         combine unverified signals by it (see rrl/reliability.py). Feedback
+                         from sources that have not earned any trust is then skipped.
+        change_detector: reset a document's short-term counters when its recent outcomes
+                         shift abruptly (see rrl/drift.py).
+        """
         self.store = store
+        self.reliability = reliability
+        self.change_detector = change_detector
         self.weights = weights
         self.robust_estimator_mode = robust_estimator_mode
         self.use_optimistic_prior = use_optimistic_prior
@@ -242,6 +255,14 @@ class ReputationLayer:
             s_judge=s_judge,
             s_expl=s_expl,
         )
+        outcome_fn = None
+        if self.reliability is not None:
+            reliability = self.reliability
+            reliability.observe(signals, shares.keys())
+
+            def outcome_fn(cid: str) -> Optional[float]:
+                return reliability.combine(signals, cid)
+
         update_counters_with_signals(
             store=self.store,
             shares=shares,
@@ -251,5 +272,11 @@ class ReputationLayer:
             decay_unit_sec=self.decay_unit_sec,
             cluster_id=cluster_id,
             robust_estimator_mode=self.robust_estimator_mode,
+            outcome_fn=outcome_fn,
         )
+        if self.change_detector is not None:
+            for cid in shares:
+                candidate = self.store.get_candidate(cid)
+                if candidate is not None and self.change_detector.check(candidate):
+                    self.store.update_candidate(candidate)
         return shares

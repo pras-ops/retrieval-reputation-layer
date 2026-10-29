@@ -263,9 +263,23 @@ Reported honestly — what the tests/sims actually establish, and what they don'
   benchmark below.
   
   ![Gate D Comparison](sim/gate_d_comparison.png)
-- **Gate E — realistic recurring-query benchmark** (`sim/run_gate_recurring.py`, MBPP): 10 independent seeds, 8 recurring epochs, **real Gemini generation**, **real unit-test verifier**. Under natural recurrence of programming problem families, RRL with global counters scores higher than a strong cross-encoder baseline. Overall pass rate: static baseline **54.0% [40.6%, 67.4%]** vs RRL **56.9% [50.9%, 62.8%]**. Late-stage pass rate: static baseline **54.2% [39.9%, 68.5%]** vs RRL **59.0% [52.5%, 65.4%]**. *At 10 seeds the CIs still overlap, so the lift is directional, not yet significant;* more seeds or a paired per-seed test would settle it, as 30 seeds did for Gate B. Details in [RESULTS.md](RESULTS.md).
+- **Gate E — superseded; see Gate F.** Two problems surfaced on review. (1) The corpus contains each query's own reference solution, so the useful document is the answer itself (in the cached data it passes 78.8% of the time, vs ~30% for any other document). (2) The RRL arm cannot be replayed from the committed cache. Kept for the record (`sim/run_gate_recurring.py`, MBPP): 10 independent seeds, 8 recurring epochs, **real Gemini generation**, **real unit-test verifier**. Under natural recurrence of programming problem families, RRL with global counters scores higher than a strong cross-encoder baseline. Overall pass rate: static baseline **54.0% [40.6%, 67.4%]** vs RRL **56.9% [50.9%, 62.8%]**. Late-stage pass rate: static baseline **54.2% [39.9%, 68.5%]** vs RRL **59.0% [52.5%, 65.4%]**. *At 10 seeds the CIs still overlap, so the lift is directional, not yet significant;* more seeds or a paired per-seed test would settle it, as 30 seeds did for Gate B. Details in [RESULTS.md](RESULTS.md).
 
   ![Gate E Comparison](sim/gate_recurring_comparison.png)
+
+- **Gate G — private-API documents** (`sim/run_gate_g.py`, 30 seeds, real Gemini generation and
+  execution against a generated library whose API changes mid-stream). The combined score
+  (reranker input + source reliability + change detection) beats a static reranker by **+20.8
+  points under an API change** and MemRL-style learning in four of five scenarios, and each added
+  component helps significantly in the scenario it targets. It still **loses to a simple
+  "reranker + move on when it fails" memory** (−4 to −7 points) and pays a small exploration cost
+  when nothing changes. Full tables and limits in [RESULTS.md](RESULTS.md).
+- **Gate G hard** (`--variant hard`): poisoned guides that fool the reranker on 79 of 80 poisoned
+  questions, and 40 held-out questions. Learning per-document usefulness transfers: on held-out
+  questions the combined score reaches 74–100% vs 0–50% for the reranker and the per-question
+  memory. Against a MemRL-style baseline it **wins when users are fooled by the poisoned guides**
+  (+5.6 points, 27/30 seeds), ties in most scenarios, and **loses under drift + random sycophancy**
+  (−11 points). Details and ablations in [RESULTS.md](RESULTS.md).
 
 ### Boundary condition ⛔ — stated, not hidden
 - **Gate C — no recurrence → a strong reranker wins** (`sim/run_gate_c.py`): one-shot HumanEval
@@ -311,24 +325,36 @@ Reported honestly — what the tests/sims actually establish, and what they don'
 rrl/                  core library (layer, store, retriever, feedback, judge, ingest, api, store_sqlite)
 sim/                  gates: verify_robustness.py, run_gate_a.py (value), run_gate_b.py (decay),
                       run_gate_c.py (no-recurrence boundary), run_gate_d.py (synthetic recurrence),
-                      run_gate_recurring.py (realistic recurrence, MBPP), gate_c_verifier.py
+                      run_gate_recurring.py (Gate E, superseded), run_gate_matrix.py (Gate F,
+                      leak-free MBPP replay), run_gate_g.py (Gate G, private-API docs),
+                      plot_gate_f_map.py (measured similarity-vs-usefulness map), gate_c_verifier.py
 data/                 HumanEval.jsonl (164 problems, OpenAI · MIT) and mbpp.jsonl (974 problems,
-                      Google MBPP · CC-BY-4.0) — real unit-test verifier substrates
-tests/                test_feedback.py, test_store_sqlite.py, test_robustness.py, test_api.py
+                      Google MBPP · CC-BY-4.0) — real unit-test verifier substrates;
+                      matrix_outcomes_*.jsonl + gate_f_pools_*.json (Gate F outcome tables, pools);
+                      gate_g/ (generated zyn library v1/v2, pools, outcome table)
+tests/                test_feedback.py, test_store_sqlite.py, test_robustness.py, test_api.py,
+                      test_layer.py, test_reliability.py, ...
 ROADMAP.md            phased build plan
 ```
 
 ## Running tests & simulations
 
 ```bash
-python3 -m unittest discover -s tests -p "test_*.py"     # unit tests (35, no resource leaks)
+python3 -m pytest tests -q                               # unit tests
 python3 sim/verify_robustness.py                         # robustness ablation (20-seed)
 python3 sim/run_gate_a.py                                # Gate A: value under recurrence (10-seed)
 python3 sim/run_gate_b.py                                # Gate B: decay / freshness (30-seed)
 python3 sim/run_gate_c.py                                # Gate C: no-recurrence boundary (needs Gemini)
 python3 sim/run_gate_recurring.py --selftest            # realistic benchmark: offline plumbing check
-USE_REAL_GEMINI=true python3 sim/run_gate_recurring.py   # realistic recurring benchmark (MBPP, real LLM)
+USE_REAL_GEMINI=true python3 sim/run_gate_recurring.py   # Gate E (superseded; answer-key leak)
+python3 sim/run_gate_matrix.py --selftest                # Gate F: offline plumbing check
+python3 sim/run_gate_matrix.py --generator gemini --scenario all   # Gate F replay (table in data/)
+python3 sim/run_gate_g.py --selftest                     # Gate G: library + docs + replay check
+python3 sim/run_gate_g.py --scenario all                 # Gate G replay (table in data/gate_g/)
 ```
+
+Gate F and Gate G build their outcome tables once with `--build` (Gemini calls; needs
+`USE_REAL_GEMINI=true` and credentials). Every later run replays the committed tables offline.
 
 ## Related work
 
