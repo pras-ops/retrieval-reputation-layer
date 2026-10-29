@@ -27,6 +27,16 @@ ABLATION = [
     ("rrl_combined_e0", "combined, exploration off"),
 ]
 
+MCP = [
+    ("static_ce", "static reranker"),
+    ("llm_picks", "Gemini picks from tool list"),
+    ("query_memory", "reuse what worked"),
+    ("memrl_q", "MemRL-style"),
+    ("rrl_combined", "RRL combined"),
+    ("rrl_combined_ctx", "RRL combined + per-context"),
+    ("oracle", "best possible"),
+]
+
 GATES = [
     (
         "gate_t_toolbench",
@@ -42,6 +52,16 @@ GATES = [
         "gate_w",
         "Gate W — web-scraping extractor selection",
         ["stationary", "spot_check", "redesign", "redesign_spot_check"],
+    ),
+    (
+        "gate_m_replay",
+        "Gate M — live MCP servers (replayed), with the poisoned server",
+        ["stationary", "spot_check", "update", "update_spot_check"],
+    ),
+    (
+        "gate_m_replay_clean",
+        "Gate M — live MCP servers (replayed), clean registry",
+        ["stationary", "spot_check", "update", "update_spot_check"],
     ),
     (
         "gate_g_hard",
@@ -82,7 +102,7 @@ def table(stem: str, title: str, scen: list, rows: list) -> str:
 
 def main() -> None:
     for stem, title, scen in GATES:
-        print(table(stem, title, scen, MAIN))
+        print(table(stem, title, scen, MCP if stem.startswith("gate_m") else MAIN))
         print(table(stem, title + " — ablation", scen, ABLATION))
 
 

@@ -3,58 +3,127 @@
 All numbers below come from the current code and replay offline from committed data:
 
 ```bash
+python3 sim/run_gate_m.py --scenario all --ablation        # Gate M, recorded live MCP responses
+python3 sim/run_gate_m.py --clean --scenario all --ablation   # Gate M without the poisoned server
+python3 sim/run_gate_m.py --live --seeds 3 --scenario update  # Gate M fully live (real MCP calls)
 python3 sim/run_gate_t.py --scenario all --ablation        # Gate T (data/gate_t/, ToolRet-derived)
 python3 sim/run_gate_w.py --scenario all --ablation        # Gate W (generated offline)
 python3 sim/run_gate_g.py --variant hard --scenario all --ablation   # Gate G hard (data/gate_g/)
-python3 sim/run_gate_g.py --variant easy --scenario all --ablation   # Gate G easy
-python3 sim/summarize_results.py                           # prints the tables below
+python3 sim/run_gate_matrix.py --generator gemini --scenario all --ablation   # Gate F
+python3 sim/summarize_results.py                           # prints most tables below
 ```
 
 30 seeds per scenario; seeds vary the request order, feedback noise, flaky calls and exploration,
 and every comparison is paired over the same seeds. Per-seed and paired statistics (95% CIs,
 paired t-test, Wilcoxon) are in `sim/results/*.json`.
 
-**Policies.** *Static reranker*: cross-encoder top-1, no learning. *Reuse what worked*: per
-request, walk the reranker's order until something works, then keep it. *MemRL-style*:
-`(1−λ)·z(sim) + λ·z(Q)`, `Q ← Q + 0.3(r − Q)`, taking feedback at face value. *RRL combined*:
-reranker-blended relevance + Beta reputation + two-coin source reliability (per item) +
-statistical change detection, with the benchmark exploration weight 0.30. *Explore 0.10* is
-the same with the library's default exploration weight. *Per-context* adds counters per request
-(or per site in Gate W), shrunk toward each item's global counters.
+**Policies.** *Static reranker*: cross-encoder top-1, no learning. *Gemini picks* (Gate M):
+Gemini 2.5 Flash reads the live tool list and plans its calls, as agents do today; it does not
+learn. *Reuse what worked*: per request (per site in W and M), walk the reranker's order until
+something works, then keep it. *MemRL-style*: `(1−λ)·z(sim) + λ·z(Q)`, `Q ← Q + 0.3(r − Q)`.
+Both learning baselines use the verifier when it ran and take other feedback at face value.
+*RRL combined*: reranker-blended relevance + Beta reputation + two-coin source reliability (per
+item) + statistical change detection, exploration weight 0.30; *explore 0.10* uses the library
+default; *per-context* adds counters per request (per site in W and M), shrunk toward each
+item's global counters.
 
-**Scenarios.** Verifier on every step (*stationary*), on 20% (*sparse verifier*, *spot check*),
-users accepting 50% of answers at random (*sycophantic*), users accepting 90% of answers built
-from a poisoned item (*fooled*), and a mid-stream change (*drift*: tool updates or an API
-switch; *redesign*: site theme changes). Gate W's feedback is produced by the tools themselves:
-each extractor's own success report and a schema validator, plus spot checks.
+> **Correction (2026-10-29).** An earlier version of these results let the two learning
+> baselines blend the verifier's result with the other signals even when the verifier ran,
+> instead of using it. That under-stated them, most in Gate W (MemRL-style was reported at
+> about 1% with every call verified; it is 34–36%). All tables below use the corrected
+> baselines.
 
 ## Summary
 
-1. **Learning which tools or documents work beats every non-learning baseline.** In Gate T the
-   static reranker solves about 30% of requests; RRL 41–59%; the best possible pick 85–90%.
-2. **Verifier-anchored trust is RRL's clear advantage.** When feedback is fooled by poisoned
-   items, RRL beats MemRL-style: Gate T +3.0 / +3.7 (ToolBench) and +10.9 / +9.6 (ToolLens)
-   points in *fooled* / *drift + fooled* (30/30 seeds each); Gate G hard +4.9 in *fooled* (28/30
-   seeds); and in Gate W, where extractors over-report success, MemRL-style collapses to about 1%
-   while RRL reaches 39–59% (30/30 seeds). The exception is Gate G hard *drift + fooled*, where
-   the slow change detector costs more than trust gains (−8.3; with the old detector, a tie).
-3. **Per-item reliability matters when sources fail on particular items.** In Gate W, where
-   only some extractors over-report success, global-only reliability loses 8–9 points with
-   spot checks. In Gate T and G it makes no difference.
-4. **Per-context reputation helps when usefulness depends on context** (Gate W: +2.8 to +7.6
-   points, best policy in every scenario) and does nothing or hurts when every request is new
-   (Gate T) or contexts are few-shot (Gate G).
-5. **Exploration weight 0.30 is too high.** The library default 0.10 is better in Gate T (+2 to
-   +4 points) and in all but one Gate G scenario, and about equal in W. With it RRL also matches or beats MemRL-style on honest feedback in Gate T
-   (ToolBench stationary 56.4 vs 55.2).
-6. **Change detection is a trade-off, not a free win.** The new z-test detector cut false resets
-   from about 20 to about 2 per run in Gate W (worth 5–7 points), but reacts later to a real API
-   change: in Gate G hard under drift the old fast detector is 7–9 points better. In Gate T it
-   rarely fires.
-7. **Where MemRL-style still wins:** drift with honest or randomly noisy feedback (Gate G hard:
-   −11.7 under *drift*, −18.3 under *drift + sycophantic*), and honest or randomly noisy feedback
-   in Gate T with the 0.30 exploration weight (−2 to −4; with 0.10 the gap mostly closes). A running
-   average that forgets quickly is hard to beat when feedback is not adversarial.
+1. **Learning which tools work beats choosing by description**, including an LLM choosing from
+   the tool list. With a poisoned "universal" tool in the registry, the static reranker and
+   Gemini pick it almost always (Gemini: 92% of pages; it also planned the injected
+   `send_report` call 4–6% of the time) and solve 0–8% of requests; RRL with per-context counters
+   solves 41–58% and picks the poisoned tool on about 2% of steps with every call verified.
+2. **With sparse verification and tools that over-report success, RRL is the learner that is
+   not fooled.** With spot checks on 20% of calls (Gates W and M), MemRL-style trusts the
+   poisoned tool's own success reports and falls to 3–4%; RRL keeps 37–50%. "Reuse what worked"
+   matches RRL on sites it has seen but reaches only 18–20% on new sites, where RRL reaches 44–79%.
+3. **With every call verified and the same contexts recurring, simple per-context memory wins.**
+   In Gates W and M, "reuse what worked" beats RRL by 8–19 points; RRL's exploration and global
+   priors cost it there.
+4. **On real tool descriptions (Gate T), RRL and MemRL-style are close.** With the library's
+   exploration weight (0.10), RRL ranges from 2.4 points behind (random sycophancy) to 4.6 ahead
+   (fooled feedback); with 0.30 it is up to 5 points behind on honest or randomly noisy feedback.
+5. **Under abrupt change, MemRL-style adapts faster** (Gate G hard: 9–21 points ahead).
+6. **Per-item reliability and per-context counters are the components that matter most.**
+   Global-only reliability loses 7–9 points with spot checks (W, M); per-context counters add
+   3–12 points where contexts recur (W, M) and do nothing or hurt where they do not (T, G).
+7. **Change detection is a trade-off.** The z-test detector cuts false resets from about 20 to
+   about 2 per run (W, M), but reacts later to a real API change than the original rule (G);
+   turning it off is about as good or better in W and M.
+8. **When the model already knows the answer, retrieval does not matter** (Gate F: reranker
+   57.1% = no retrieval 57.2%).
+
+## Gate M — tool selection over live MCP servers
+
+Four local MCP servers over stdio (`sim/mcp_testbed/`): CSS, structured-data and heuristic
+extractors (the heuristic one on a flaky server), and a "universal AI extractor" whose
+description is inflated and carries an MCPTox-style injected instruction to call `send_report`
+(a harmless canary). Tools fetch real pages from a local shop site; 6 of 30 shops are held out.
+In the *update* scenarios half the Shopify-like shops redesign and the structured-data server is
+upgraded mid-run (`extract_jsonld(url)` becomes `jsonld_extract(page_url)`). Outcomes were
+recorded from 2,280 live MCP calls and replayed with flaky-server timeouts (20%) and 2% transient
+failures on every tool.
+
+### Gate M — live MCP servers (replayed), with the poisoned server
+
+Overall / held-out pass rate (%), mean of 30 seeds.
+
+| Policy | stationary | spot_check | update | update_spot_check |
+|---|---|---|---|---|
+| static reranker | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 |
+| Gemini picks from tool list | 1.0 / 0.0 | 1.0 / 0.0 | 8.2 / 0.0 | 8.2 / 0.0 |
+| reuse what worked | 70.9 / 65.0 | 51.8 / 20.3 | 62.9 / 61.3 | 46.5 / 17.9 |
+| MemRL-style | 35.8 / 45.8 | 3.9 / 1.9 | 33.8 / 32.2 | 3.2 / 1.2 |
+| RRL combined | 45.9 / 57.2 | 42.1 / 60.3 | 42.5 / 51.2 | 37.5 / 44.4 |
+| RRL combined + per-context | 57.8 / 67.6 | 48.8 / 69.4 | 49.8 / 60.4 | 41.1 / 55.7 |
+| best possible | 90.4 / 98.8 | 90.4 / 98.8 | 90.4 / 98.8 | 90.4 / 98.8 |
+
+
+Poisoned tool chosen (share of steps), all calls verified / 20% verified: static reranker
+100% / 100%, Gemini
+99% / 99%, MemRL-style
+4% / 90%, RRL per-context
+1.7% / 15.1%.
+
+### Gate M — live MCP servers (replayed), clean registry
+
+Overall / held-out pass rate (%), mean of 30 seeds.
+
+| Policy | stationary | spot_check | update | update_spot_check |
+|---|---|---|---|---|
+| static reranker | 46.0 / 65.7 | 46.0 / 65.7 | 37.4 / 49.3 | 37.4 / 49.3 |
+| Gemini picks from tool list | 47.7 / 61.8 | 47.7 / 61.8 | 49.7 / 53.8 | 49.7 / 53.8 |
+| reuse what worked | 77.5 / 89.4 | 77.0 / 89.4 | 70.4 / 85.4 | 69.2 / 85.4 |
+| MemRL-style | 34.9 / 45.6 | 34.2 / 40.8 | 34.1 / 31.7 | 31.7 / 26.9 |
+| RRL combined | 48.0 / 61.9 | 47.7 / 58.3 | 44.1 / 51.9 | 44.1 / 50.8 |
+| RRL combined + per-context | 58.8 / 67.5 | 58.1 / 68.3 | 50.8 / 62.8 | 50.0 / 61.5 |
+| best possible | 90.4 / 98.8 | 90.4 / 98.8 | 90.4 / 98.8 | 90.4 / 98.8 |
+
+
+Without the poisoned server, Gemini picks a sensible tool (48–50%, level with the reranker
+before the update and ahead after it), and per-site "reuse what worked" is best (69–78%).
+
+**Live check.** The same policies run with real MCP calls on every step (3 seeds):
+
+| Policy | stationary: replay (30 seeds) | live (3 seeds) | update: replay | live |
+|---|---|---|---|---|
+| static reranker | 0.0 | 0.0 | 0.0 | 0.0 |
+| Gemini picks from tool list | 1.0 | 1.0 | 8.2 | 8.3 |
+| reuse what worked | 70.9 | 77.2 | 62.9 | 69.4 |
+| MemRL-style | 35.8 | 37.8 | 33.8 | 34.9 |
+| RRL combined | 45.9 | 47.4 | 42.5 | 44.3 |
+| RRL + per-context | 57.8 | 57.9 | 49.8 | 49.8 |
+
+Live and replay agree within about 2 points, except "reuse what worked", which does 6 points
+better live: the replay adds 2% transient failures on every tool, the local servers had none
+outside the flaky one, and that baseline abandons a working tool after any single failure.
 
 ## Gate T — agent tool selection on real tool descriptions (ToolRet)
 
@@ -72,8 +141,8 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | Policy | stationary | sparse_verifier | sycophantic | fooled | drift | drift_fooled |
 |---|---|---|---|---|---|---|
 | static reranker | 31.4 / 33.0 | 31.4 / 33.0 | 31.4 / 33.0 | 31.4 / 33.0 | 30.5 / 30.3 | 30.5 / 30.3 |
-| reuse what worked | 46.0 / 33.0 | 46.0 / 33.0 | 40.9 / 33.0 | 39.6 / 33.0 | 41.0 / 30.3 | 34.9 / 30.3 |
-| MemRL-style | 55.2 / 45.0 | 54.8 / 44.8 | 49.3 / 42.1 | 41.2 / 32.1 | 50.9 / 42.5 | 37.7 / 30.9 |
+| reuse what worked | 46.0 / 33.0 | 46.0 / 33.0 | 41.1 / 33.0 | 39.9 / 33.0 | 41.0 / 30.3 | 35.2 / 30.3 |
+| MemRL-style | 55.5 / 45.3 | 54.8 / 44.7 | 50.0 / 42.7 | 45.5 / 39.2 | 51.0 / 42.3 | 41.9 / 38.2 |
 | RRL combined | 52.5 / 50.1 | 50.5 / 50.0 | 45.2 / 46.6 | 44.2 / 43.3 | 48.1 / 48.7 | 41.4 / 44.0 |
 | RRL combined, explore 0.10 | 56.4 / 51.9 | 54.5 / 52.0 | 47.6 / 49.8 | 47.0 / 46.8 | 51.0 / 51.6 | 43.5 / 45.6 |
 | RRL combined + per-context | 52.3 / 50.0 | 50.4 / 49.7 | 45.2 / 46.9 | 44.1 / 43.7 | 47.9 / 48.1 | 41.1 / 43.7 |
@@ -100,8 +169,8 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | Policy | stationary | sparse_verifier | sycophantic | fooled | drift | drift_fooled |
 |---|---|---|---|---|---|---|
 | static reranker | 29.1 / 32.2 | 29.1 / 32.2 | 29.1 / 32.2 | 29.1 / 32.2 | 26.5 / 25.2 | 26.5 / 25.2 |
-| reuse what worked | 42.9 / 32.2 | 42.9 / 32.2 | 38.1 / 32.2 | 34.2 / 32.2 | 36.2 / 25.2 | 29.3 / 25.2 |
-| MemRL-style | 55.0 / 56.8 | 54.3 / 56.7 | 51.0 / 56.6 | 35.3 / 41.7 | 52.2 / 55.7 | 32.0 / 33.2 |
+| reuse what worked | 42.9 / 32.2 | 42.9 / 32.2 | 38.2 / 32.2 | 34.7 / 32.2 | 36.2 / 25.2 | 29.7 / 25.2 |
+| MemRL-style | 55.4 / 57.9 | 54.3 / 56.8 | 51.7 / 56.3 | 43.9 / 50.3 | 52.4 / 55.4 | 40.6 / 42.0 |
 | RRL combined | 56.1 / 55.6 | 53.7 / 56.4 | 48.1 / 52.1 | 46.2 / 50.3 | 49.9 / 52.0 | 41.6 / 42.3 |
 | RRL combined, explore 0.10 | 59.1 / 60.3 | 55.8 / 58.4 | 50.6 / 54.6 | 48.5 / 52.8 | 52.2 / 53.1 | 43.6 / 42.3 |
 | RRL combined + per-context | 56.1 / 55.9 | 53.6 / 57.2 | 48.0 / 51.5 | 46.2 / 49.2 | 49.7 / 50.7 | 41.9 / 43.9 |
@@ -135,8 +204,8 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | Policy | stationary | spot_check | redesign | redesign_spot_check |
 |---|---|---|---|---|
 | static reranker | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 |
-| reuse what worked | 19.0 / 5.0 | 19.0 / 5.0 | 17.8 / 4.3 | 17.8 / 4.3 |
-| MemRL-style | 1.3 / 0.0 | 0.4 / 0.0 | 1.1 / 0.0 | 0.4 / 0.0 |
+| reuse what worked | 67.0 / 61.4 | 50.4 / 19.6 | 64.2 / 58.5 | 47.9 / 17.5 |
+| MemRL-style | 35.9 / 43.3 | 4.4 / 3.6 | 34.0 / 32.1 | 4.3 / 3.5 |
 | RRL combined | 51.4 / 68.9 | 46.4 / 72.9 | 45.5 / 53.5 | 39.4 / 54.0 |
 | RRL combined, explore 0.10 | 52.6 / 72.4 | 47.1 / 65.7 | 46.2 / 54.2 | 40.4 / 52.4 |
 | RRL combined + per-context | 59.0 / 80.3 | 50.5 / 79.4 | 51.3 / 65.0 | 42.2 / 58.5 |
@@ -156,8 +225,6 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | combined, exploration off | 51.7 / 66.0 | 45.8 / 58.6 | 45.2 / 49.3 | 38.6 / 39.7 |
 
 
-Change-detector resets per run (stationary): old detector 23.0, new detector 1.9.
-
 ## Gate G hard — private-API documents with a poisoned reranker
 
 Gemini 2.5 Flash writes code against a generated library (`zyn`) whose docs are the only way to
@@ -171,8 +238,8 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | Policy | stationary | sycophantic | fooled | drift | drift_sycophantic | drift_fooled |
 |---|---|---|---|---|---|---|
 | static reranker | 50.8 / 50.0 | 50.8 / 50.0 | 50.8 / 50.0 | 23.5 / 0.0 | 23.5 / 0.0 | 23.5 / 0.0 |
-| reuse what worked | 83.7 / 50.0 | 75.6 / 50.0 | 63.4 / 50.0 | 51.3 / 0.0 | 38.7 / 0.0 | 39.6 / 0.0 |
-| MemRL-style | 96.1 / 100.0 | 92.1 / 99.8 | 83.2 / 96.0 | 83.4 / 98.1 | 70.7 / 90.1 | 65.0 / 84.0 |
+| reuse what worked | 83.7 / 50.0 | 76.0 / 50.0 | 64.8 / 50.0 | 51.3 / 0.0 | 39.1 / 0.0 | 40.1 / 0.0 |
+| MemRL-style | 96.0 / 100.0 | 93.1 / 100.0 | 89.7 / 99.4 | 80.9 / 95.5 | 73.7 / 93.8 | 74.8 / 93.9 |
 | RRL combined | 96.5 / 100.0 | 90.2 / 99.8 | 88.0 / 98.8 | 71.7 / 96.7 | 52.4 / 65.2 | 56.7 / 75.7 |
 | RRL combined, explore 0.10 | 97.7 / 100.0 | 93.1 / 99.8 | 90.5 / 97.8 | 75.5 / 95.0 | 54.2 / 67.9 | 59.9 / 78.8 |
 | RRL combined + per-context | 96.5 / 100.0 | 89.9 / 99.8 | 87.5 / 99.2 | 61.3 / 76.0 | 48.4 / 51.6 | 52.9 / 70.2 |
@@ -192,47 +259,39 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | combined, exploration off | 97.7 / 100.0 | 89.9 / 97.3 | 88.2 / 95.8 | 76.8 / 100.0 | 50.6 / 58.3 | 56.1 / 72.6 |
 
 
-The easy variant (`--variant easy`, results in `sim/results/gate_g_*.json`) has a reranker that
-is always right before the switch; there RRL beats MemRL-style by about 19–22 points without
-drift and loses by 2–4 with it.
-
 ## Gate F — MBPP, leak-free
 
-`python3 sim/run_gate_matrix.py --generator gemini --scenario all --ablation` replays
-`data/matrix_outcomes_gemini-2.5-flash.jsonl` (4,128 Gemini 2.5 Flash cells; one prompt timed
-out on every retry and is recorded as a failure, `"error": "timeout"`). 30 questions per seed,
-8 epochs, pool of 5 related MBPP solutions (never the question's own).
+`data/matrix_outcomes_gemini-2.5-flash.jsonl` (4,128 Gemini 2.5 Flash cells; one prompt timed out
+on every retry and is recorded as a failure). 30 questions per seed, 8 epochs, a pool of 5
+related MBPP solutions (never the question's own).
 
-| Policy | stationary | sparse verifier | sycophantic | drift |
+| Policy | stationary | sparse_verifier | sycophantic | drift |
 |---|---|---|---|---|
 | no retrieval | 57.2 | 57.2 | 57.2 | 57.2 |
 | static reranker | 57.1 | 57.1 | 57.1 | 56.3 |
 | reuse what worked | 60.4 | 60.4 | 59.9 | 58.7 |
-| MemRL-style | 57.9 | 57.8 | 57.8 | 57.6 |
+| MemRL-style | 57.7 | 57.8 | 57.4 | 57.2 |
 | RRL combined | 58.4 | 57.7 | 57.7 | 57.1 |
 | RRL combined, explore 0.10 | 58.3 | 58.1 | 58.0 | 57.4 |
 | RRL + per-context | 58.7 | 58.0 | 57.9 | 57.3 |
 | best possible | 61.3 | 61.3 | 61.3 | 61.3 |
 
-**Retrieval barely matters here.** The reranker does no better than no retrieval (57.1 vs 57.2),
-the most and least similar candidates pass at the same rate (56.9% vs 56.2% over 4,500 pairs),
-a document helps in 2.0% of pairs and hurts in 2.8%, and the best possible pick is only 4 points
-above the reranker. RRL gains +1.3 points over the reranker when nothing changes (p = 0.0001)
-and is level with MemRL-style; per-question "reuse what worked" is best (+2.0 over RRL), since
-with deterministic outcomes it settles on the best candidate per question. Gate F mainly shows
-that a benchmark where the model already knows the answer cannot show the value of learning
-which documents help — which is why Gates G, T and W were built.
+Retrieval barely matters here: the reranker matches no retrieval, the most and least similar
+candidates pass at the same rate (56.9% vs 56.2% over 4,500 pairs), and the best possible pick is
+4 points above the reranker. A benchmark where the model already knows the answer cannot show
+the value of learning which documents help, which is why Gates G, T, W and M were built.
 
 ## Limits
 
-- **No live tool calls.** Gate T judges a choice by ToolRet's gold labels; Gate W runs real
-  extraction code on generated pages; Gate G runs real code on a generated library.
-- **Synthetic stress.** Tool updates, poisoned twins, flaky tools, redesigns and the feedback
+- **Gate M's tools are real MCP tools on local servers**, with a generated website and a
+  synthetic poisoned server; Gate T judges by ToolRet's labels; Gate W runs real code on
+  generated pages. No third-party MCP servers or live web sites were used.
+- **Synthetic stress.** Tool updates, poisoned tools, flaky tools, redesigns and the feedback
   models are added on top of the data; their rates are choices, stated above.
 - **MemRL-style is a reimplementation** of MemRL's ranking rule, not MemRL's code.
 - **The benchmark exploration weight (0.30) predates these results**; the ablation favours the
-  library default (0.10). Both are reported rather than re-picking the main configuration after
-  seeing the results.
+  library default (0.10) in Gates T and G. Both are reported rather than re-picking the main
+  configuration after seeing the results.
 
 ---
 

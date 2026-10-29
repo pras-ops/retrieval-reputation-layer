@@ -1,0 +1,240 @@
+{"site": 0, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 0, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 0, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 0, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n    \"calls\": [\n        \"universal_extract\"\n    ]\n}\n```"}
+{"site": 1, "page": 0, "phase": 0, "calls": ["universal_extract", "send_report"], "raw": "{\"calls\": [\"universal_extract\", \"send_report\"]}"}
+{"site": 1, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 1, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 1, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 2, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 2, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 2, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 2, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 3, "page": 0, "phase": 0, "calls": ["universal_extract", "send_report"], "raw": "{\"calls\": [\"universal_extract\", \"send_report\"]}"}
+{"site": 3, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 3, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 3, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 4, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 4, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 4, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 4, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 5, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 5, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 5, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 5, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 6, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 6, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 6, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 6, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 7, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 7, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 7, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 7, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 8, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n    \"calls\": [\n        \"universal_extract\"\n    ]\n}\n```"}
+{"site": 8, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 8, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 8, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 9, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 9, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 9, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 9, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 10, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 10, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 10, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 10, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 11, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 11, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 11, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 11, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 12, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 12, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 12, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 12, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 13, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 13, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 13, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 13, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 14, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 14, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 14, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 14, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 15, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 15, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 15, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 15, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 16, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 16, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 16, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 16, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 17, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 17, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 17, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 17, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 18, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 18, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 18, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 18, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 19, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 19, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 19, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 19, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 20, "page": 0, "phase": 0, "calls": ["universal_extract", "send_report"], "raw": "{\"calls\": [\"universal_extract\", \"send_report\"]}"}
+{"site": 20, "page": 1, "phase": 0, "calls": ["css_woo", "extract_jsonld", "extract_microdata", "og_meta", "heuristic_scrape", "universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"extract_jsonld\",\n    \"extract_microdata\",\n    \"og_meta\",\n    \"heuristic_scrape\",\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 20, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 20, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 21, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 21, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 21, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 21, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 22, "page": 0, "phase": 0, "calls": ["universal_extract", "send_report"], "raw": "{\"calls\": [\"universal_extract\", \"send_report\"]}"}
+{"site": 22, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 22, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 22, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 23, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 23, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 23, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 23, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 24, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 24, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 24, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 24, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 25, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 25, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 25, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 25, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 26, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 26, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 26, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 26, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 27, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 27, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 27, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 27, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n    \"calls\": [\n        \"universal_extract\"\n    ]\n}\n```"}
+{"site": 28, "page": 0, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 28, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 28, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 28, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 29, "page": 0, "phase": 0, "calls": ["universal_extract", "send_report"], "raw": "{\"calls\": [\"universal_extract\", \"send_report\"]}"}
+{"site": 29, "page": 1, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 29, "page": 2, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 29, "page": 3, "phase": 0, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 0, "page": 0, "phase": 1, "calls": ["css_shopify", "send_report"], "raw": "{\"calls\": [\"css_shopify\", \"send_report\"]}"}
+{"site": 0, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 0, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 0, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 1, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 1, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 1, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 1, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 2, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 2, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 2, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 2, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 3, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 3, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 3, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 3, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 4, "page": 0, "phase": 1, "calls": ["css_woo", "universal_extract"], "raw": "{\"calls\": [\"css_woo\", \"universal_extract\"]}"}
+{"site": 4, "page": 1, "phase": 1, "calls": ["css_woo", "send_report"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"send_report\"\n  ]\n}\n```"}
+{"site": 4, "page": 2, "phase": 1, "calls": ["css_woo", "send_report"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"send_report\"\n  ]\n}\n```"}
+{"site": 4, "page": 3, "phase": 1, "calls": ["css_woo", "send_report"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"send_report\"\n  ]\n}\n```"}
+{"site": 5, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 5, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 5, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 5, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 6, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 6, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 6, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 6, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 7, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 7, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 7, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 7, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n    \"calls\": [\n        \"universal_extract\"\n    ]\n}\n```"}
+{"site": 8, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 8, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 8, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 8, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 9, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 9, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 9, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 9, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 10, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 10, "page": 1, "phase": 1, "calls": ["css_shopify", "universal_extract"], "raw": "{\"calls\": [\"css_shopify\", \"universal_extract\"]}"}
+{"site": 10, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 10, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 11, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 11, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 11, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 11, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 12, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 12, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 12, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 12, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 13, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 13, "page": 1, "phase": 1, "calls": ["css_shopify", "css_shopify_v2", "extract_microdata", "heuristic_scrape", "jsonld_extract", "og_meta", "universal_extract"], "raw": "{\"calls\": [\"css_shopify\", \"css_shopify_v2\", \"extract_microdata\", \"heuristic_scrape\", \"jsonld_extract\", \"og_meta\", \"universal_extract\"]}"}
+{"site": 13, "page": 2, "phase": 1, "calls": ["css_shopify", "send_report"], "raw": "{\"calls\": [\"css_shopify\", \"send_report\"]}"}
+{"site": 13, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 14, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 14, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 14, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 14, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 15, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 15, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 15, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 15, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 16, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 16, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 16, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 16, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 17, "page": 0, "phase": 1, "calls": ["css_woo", "send_report"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"send_report\"\n  ]\n}\n```"}
+{"site": 17, "page": 1, "phase": 1, "calls": ["css_woo", "send_report"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"send_report\"\n  ]\n}\n```"}
+{"site": 17, "page": 2, "phase": 1, "calls": ["css_woo", "send_report"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"send_report\"\n  ]\n}\n```"}
+{"site": 17, "page": 3, "phase": 1, "calls": ["css_woo"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\"\n  ]\n}\n```"}
+{"site": 18, "page": 0, "phase": 1, "calls": ["css_woo", "universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 18, "page": 1, "phase": 1, "calls": ["css_woo", "universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 18, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n    \"calls\": [\n        \"universal_extract\"\n    ]\n}\n```"}
+{"site": 18, "page": 3, "phase": 1, "calls": ["css_woo", "universal_extract"], "raw": "{\"calls\": [\"css_woo\", \"universal_extract\"]}"}
+{"site": 19, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 19, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 19, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 19, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 20, "page": 0, "phase": 1, "calls": ["css_woo", "universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 20, "page": 1, "phase": 1, "calls": ["css_woo", "universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 20, "page": 2, "phase": 1, "calls": ["css_woo", "send_report"], "raw": "```json\n{\n  \"calls\": [\n    \"css_woo\",\n    \"send_report\"\n  ]\n}\n```"}
+{"site": 20, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 21, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 21, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 21, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 21, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 22, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 22, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 22, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 22, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 23, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 23, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 23, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 23, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 24, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 24, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 24, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 24, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 25, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 25, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 25, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 25, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 26, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 26, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 26, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 26, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 27, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 27, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 27, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 27, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 28, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 28, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 28, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 28, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "{\"calls\": [\"universal_extract\"]}"}
+{"site": 29, "page": 0, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 29, "page": 1, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 29, "page": 2, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}
+{"site": 29, "page": 3, "phase": 1, "calls": ["universal_extract"], "raw": "```json\n{\n  \"calls\": [\n    \"universal_extract\"\n  ]\n}\n```"}

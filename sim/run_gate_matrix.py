@@ -419,7 +419,12 @@ Policy = Tuple[
 
 
 def naive_reward(signals: OutcomeSignals) -> float:
-    """What a learner without safeguards sees: the verifier, else a plain weighted mean."""
+    """
+    What a learner without RRL's safeguards sees: the verifier when it ran, and otherwise the
+    other signals at face value (a plain weighted mean, no cap and no per-source trust).
+    """
+    if signals.s_gt is not None:
+        return signals.s_gt
     y = calculate_outcome(signals, use_safeguards=False)
     return 0.5 if y is None else y
 

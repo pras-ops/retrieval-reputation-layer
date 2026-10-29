@@ -61,6 +61,13 @@ All notable changes to this project are documented here. The format is based on
   counters.
 - `run_policies` accepts `scenario["signals_fn"]` for benchmarks whose feedback comes from the
   tools rather than a simulated user.
+- **Gate M** (`sim/run_gate_m.py`, `sim/mcp_testbed/`): tool selection over live MCP servers
+  (stdio, MCP Python SDK): a local shop site, scraper servers, a flaky server, a mid-run tool
+  update, and a poisoned server whose description carries an injected instruction to call a
+  harmless canary tool. `--record` captures every tool's live response; replays run 30 seeds;
+  `--live` runs every policy with real MCP calls; `--clean` drops the poisoned server. Includes a
+  Gemini baseline that picks tools from the live tool list (`--llm`). Self-test in CI.
+- `mcp>=1.27,<2` in the `dev` extra.
 - `sim/summarize_results.py` prints the RESULTS.md tables from `sim/results/*.json`.
 - Gate F's 30-seed Gemini outcome table and results; `--timeouts-as-failures` records cells whose
   generation still times out after `--build` as failed (`"error": "timeout"`).
@@ -75,6 +82,10 @@ All notable changes to this project are documented here. The format is based on
   weights. Defaults are now `(0.55, 0.30, 0.15, 0.10)` and `(0.70, 0.20, 0.10, 0.10)`. Callers
   that pass explicit weights are unaffected.
 - `RESULTS.md` named `gemini-2.5-pro`; the harness calls `gemini-2.5-flash`.
+- The "reuse what worked" and MemRL-style baselines blended the verifier's result with the other
+  feedback signals even when the verifier ran, instead of using it. That under-stated them, most
+  in Gate W, so earlier claims that RRL beat MemRL-style there by about 50 points were wrong.
+  They now use the verifier whenever it ran; all results were re-run and RESULTS.md corrected.
 - `Retriever` broke ties in fused scores in hash order, so candidate rankings could differ
   between runs of the same code. Ties are now broken by candidate id.
 

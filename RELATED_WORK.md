@@ -157,9 +157,10 @@ liar/deception counter, evaluated honestly with a stated failure mode.
 
 ## Honest gaps relative to this work
 
-- **No real tool execution.** Gate T judges a tool choice by ToolRet's gold labels, not by
-  calling the API; Gate W executes real extraction code, but on generated pages. A study on live
-  MCP servers (e.g. MCPEvol-Bench or MCPTox environments) is still needed.
+- **No third-party tools.** Gate M makes real MCP calls, but to local servers written for the
+  test against a generated website; Gate T judges by ToolRet's gold labels; Gate W runs real
+  extraction code on generated pages. Third-party MCP servers (e.g. MCPEvol-Bench or MCPTox
+  environments) are still needed.
 - **Not compared against MemRL's code or benchmarks** — only a MemRL-style reimplementation of
   its ranking rule (`memrl_q`) on RRL's gates.
 - **Not evaluated on Evo-Memory** or a natural document corpus with real version changes.
@@ -175,5 +176,6 @@ liar/deception counter, evaluated honestly with a stated failure mode.
 > which documents or tools actually work from outcomes, trusts other feedback only as far as the
 > verifier has confirmed it — per document or tool — and detects when an item's usefulness
 > changes. Its ranking rule overlaps with MemRL; its distinct part is the verifier-anchored,
-> per-item trust in feedback, which matters when feedback can be fooled (poisoned tools,
-> self-reporting scrapers).
+> per-item trust in feedback, which matters when only some calls can be verified and tools'
+> descriptions or self-reports mislead. With every call verified, simpler memories do as well
+> or better.

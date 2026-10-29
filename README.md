@@ -15,8 +15,9 @@ other feedback (users, LLM judges, a tool's own success report) only as far as a
 confirmed it — per document or tool — and resets an item's reputation when its results change.
 
 It was first built to make a web-scraping agent learn which extractor works on which site, and
-is now evaluated on agent **tool / MCP selection** (Gate T, real ToolRet tool descriptions) and
-**web-scraping tool selection** (Gate W, executable extractors), alongside RAG benchmarks.
+is now evaluated on agent **tool / MCP selection** — over live MCP servers (Gate M) and on real
+ToolRet tool descriptions (Gate T) — and on **web-scraping tool selection** (Gate W), alongside
+RAG benchmarks.
 
 The ranking rule (similarity + learned usefulness) overlaps with MemRL (arXiv 2601.03192). What
 RRL adds is **verifier-anchored, per-item trust in feedback** and **change detection** — the
@@ -53,8 +54,8 @@ converge).
 
 | Use case | Fit | Why |
 |---|---|---|
-| **Agent tool / MCP selection** | **Strongest** | Tools are reused across requests, calls can be verified, tools change and their descriptions or reports can be poisoned (Gate T) |
-| **Web-scraping extractor selection** | **Strongest** | Same tools across many sites, spot-checkable output, sites redesign, extractors over-report success (Gate W) |
+| **Agent tool / MCP selection** | **Strongest** when some tools' descriptions or self-reports mislead and only some calls can be verified | Tools are reused across requests, calls can be spot-checked, tools change (Gates M, T) |
+| **Web-scraping extractor selection** | **Strongest** under sparse verification and new sites | Same tools across many sites, extractors over-report success, sites redesign (Gate W) |
 | **Coding agents with *recurring* tasks** (reused fix patterns / snippets) | Strong | Hard verifier (tests) **+ recurring problem families** → reputation converges |
 | **Enterprise RAG over trusted docs** | Strong | Recurring question types + controlled source; decay handles *staleness* |
 | **Internal tools / agents over controlled data** | Strong | Same logic as above |
@@ -283,22 +284,28 @@ can recover truth (information-theoretic). Robust estimator modes are selectable
 
 Reported honestly — what the tests/sims actually establish, and what they don't.
 
-### Current benchmarks (Gates T, W, G, F) — full tables in [RESULTS.md](RESULTS.md)
+### Current benchmarks (Gates M, T, W, G, F) — full tables in [RESULTS.md](RESULTS.md)
 
 All replay offline from committed data, 30 seeds, paired statistics, with ablations
-(`--ablation`) of every RRL component.
+(`--ablation`) of every RRL component. Both learning baselines use the verifier whenever it ran.
 
 | Gate | What it tests | Headline |
 |---|---|---|
-| **T** — tool selection (`sim/run_gate_t.py`) | Real ToolRet requests and tool descriptions; tool updates, poisoned twins, flaky tools, held-out requests | Learning beats the static reranker (≈30% → 41–59%). **Beats MemRL-style when feedback is fooled by poisoned tools** (+3 to +11 points, 30/30 seeds); behind it by 2–4 points on honest or randomly noisy feedback at exploration 0.30, about level at 0.10 |
-| **W** — web-scraping tools (`sim/run_gate_w.py`) | 8 executable extractors on 30 generated shops; tools' own success reports; redesigns; held-out sites | Reranker and MemRL-style are fooled by a "universal" extractor (0–1%); **RRL 39–59%, per-context RRL best everywhere**; per-item reliability worth 8–9 points with spot checks |
-| **G** — private-API docs (`sim/run_gate_g.py`) | Real Gemini code against a generated library; poisoned guides; API switch | Wins when users trust the poisoned guide (+4.9); **loses to MemRL-style under an API switch** (−8 to −18), where the new change detector is slow |
-| **F** — MBPP, leak-free (`sim/run_gate_matrix.py`) | Gate E without the answer leak, replayable | Retrieval barely changes the outcome (reranker 57.1% = no retrieval 57.2%; best possible 61.3%). RRL +1.3 over the reranker, level with MemRL-style |
+| **M** — live MCP servers (`sim/run_gate_m.py`) | Real MCP tools over stdio on local servers; a poisoned server with an injected instruction; a mid-run tool update; a flaky server; Gemini picking from the tool list; fully live runs agree with the replay | Reranker and Gemini pick the poisoned tool (0–8% solved); **RRL 41–58%**. With 20% spot checks MemRL-style is fooled (3–4%) and RRL is best on new sites (44–69% vs 18–20%). **With every call verified, per-site "reuse what worked" wins** (63–78%) |
+| **T** — tool selection (`sim/run_gate_t.py`) | Real ToolRet requests and tool descriptions; tool updates, poisoned twins, flaky tools, held-out requests | Learning beats the static reranker (≈30% → 41–59%); **RRL and MemRL-style are close** (−2.4 to +4.6 points at exploration 0.10) |
+| **W** — web-scraping tools (`sim/run_gate_w.py`) | 8 executable extractors on 30 generated shops; tools' own success reports; redesigns; held-out sites | Same pattern as M: RRL resists over-reporting tools under sparse verification and generalizes to new sites; per-site memory wins when every call is verified |
+| **G** — private-API docs (`sim/run_gate_g.py`) | Real Gemini code against a generated library; poisoned guides; API switch | About level with MemRL-style without drift; **MemRL-style adapts 9–21 points better** after an API switch |
+| **F** — MBPP, leak-free (`sim/run_gate_matrix.py`) | Gate E without the answer leak, replayable | Retrieval barely changes the outcome (reranker 57.1% = no retrieval 57.2%) |
 
-**Change detection is a trade-off:** the default z-test detector avoids false resets (Gate W),
-the original fast detector (`ChangeDetector(window=4, threshold=0.6)`) adapts faster to abrupt
-changes (Gate G). **Exploration:** prefer the library default 0.10 over the 0.30 used in the
-benchmark configuration.
+**Where RRL helps:** selecting among tools whose descriptions or self-reports can mislead, with
+only some calls verifiable, and with new contexts appearing. **Where it does not:** when every
+call is verified and contexts recur (keep a per-context memory), and under abrupt changes with
+trustworthy feedback (a fast-forgetting average adapts sooner).
+
+**Change detection is a trade-off:** the default z-test detector avoids false resets, the
+original fast detector (`ChangeDetector(window=4, threshold=0.6)`) adapts faster to abrupt
+changes. **Exploration:** prefer the library default 0.10 over the 0.30 used in the benchmark
+configuration.
 
 ### Validated ✅ — under recurrence + a verifier
 - **Persistence layer** (`tests/test_store_sqlite.py`): durability across reconnect, lazy
@@ -344,8 +351,8 @@ benchmark configuration.
   ![Gate C Comparison](sim/gate_c_comparison.png)
 
 ### NOT yet validated ⚠️ (the important part)
-- **Live tools.** No gate calls real APIs or MCP servers: Gate T uses ToolRet's gold labels,
-  Gate W generated pages. A study on live MCP environments (MCPEvol-Bench, MCPTox) is next.
+- **Third-party tools.** Gate M runs real MCP servers, but local ones written for the test,
+  against a generated website; no third-party MCP servers or live sites have been used.
 - **Without any verifier.** Gates use a verifier on 20–100% of steps. With none, source
   reliability has nothing to learn from and RRL skips unverified feedback.
 - **Per-context reputation** helps when usefulness depends on a recurring context (Gate W) but
@@ -381,14 +388,17 @@ sim/                  gates: verify_robustness.py, run_gate_a.py (value), run_ga
                       run_gate_recurring.py (Gate E, superseded), run_gate_matrix.py (Gate F,
                       leak-free MBPP replay; shared policies and statistics), run_gate_g.py
                       (Gate G, private-API docs), run_gate_t.py (Gate T, tool selection on
-                      ToolRet), run_gate_w.py (Gate W, web-scraping tools), summarize_results.py,
+                      ToolRet), run_gate_w.py (Gate W, web-scraping tools), run_gate_m.py (Gate M,
+                      live MCP servers) + mcp_testbed/ (shop site, MCP servers, client),
+                      summarize_results.py,
                       plot_gate_f_map.py (similarity-vs-usefulness map), gate_c_verifier.py
 data/                 HumanEval.jsonl (164 problems, OpenAI · MIT) and mbpp.jsonl (974 problems,
                       Google MBPP · CC-BY-4.0) — real unit-test verifier substrates;
                       matrix_outcomes_*.jsonl + gate_f_pools_*.json (Gate F outcome tables, pools);
                       gate_g/ (generated zyn library v1/v2, pools, outcome tables);
                       gate_t/ (ToolRet-derived ids, scores and labels; raw data is downloaded by
-                      --build, not committed — ToolRet states no license)
+                      --build, not committed — ToolRet states no license);
+                      gate_m/ (recorded MCP responses, tool registry, pools, Gemini tool plans)
 tests/                test_feedback.py, test_store_sqlite.py, test_robustness.py, test_api.py,
                       test_layer.py, test_reliability.py, ...
 ROADMAP.md            phased build plan
@@ -412,6 +422,10 @@ python3 sim/run_gate_g.py --variant hard --scenario all --ablation
 python3 sim/run_gate_t.py --scenario all --ablation        # Gate T replay (data/gate_t/)
 python3 sim/run_gate_t.py --build                         # re-download ToolRet, rebuild pools
 python3 sim/run_gate_w.py --scenario all --ablation        # Gate W (fully offline)
+python3 sim/run_gate_m.py --selftest                      # Gate M: starts local MCP servers
+python3 sim/run_gate_m.py --scenario all --ablation        # Gate M replay (data/gate_m/)
+python3 sim/run_gate_m.py --live --seeds 3 --scenario update  # Gate M with real MCP calls
+python3 sim/run_gate_m.py --record                        # re-record all MCP responses
 python3 sim/summarize_results.py                         # result tables for RESULTS.md
 ```
 
@@ -443,17 +457,18 @@ see [RELATED_WORK.md](RELATED_WORK.md) for the honest gap list.
 
 ## Future work
 
-1. **Live tool / MCP evaluation.** Run RRL as the tool-selection layer of an agent on live MCP
-   environments with real tool updates and poisoning (MCPEvol-Bench, MCPTox), and compare with
-   MemRL's own code.
-2. **Change detection that is both fast and quiet** — e.g. per-context detection or a CUSUM /
+1. **Third-party MCP evaluation.** Run RRL as the tool-selection layer on third-party MCP
+   servers and benchmarks (MCPEvol-Bench, MCPTox environments), and compare with MemRL's code.
+2. **Exploit recurring contexts better.** Per-context "reuse what worked" beats RRL when every
+   call is verified; less exploration once a context's best tool is known should close that gap.
+3. **Change detection that is both fast and quiet** — e.g. per-context detection or a CUSUM /
    Page-Hinkley test — to close the gap to MemRL-style under abrupt changes.
-3. **Strong-stack comparison.** *Strong Stack* vs *Strong Stack + RRL* (hybrid retrieval +
+4. **Strong-stack comparison.** *Strong Stack* vs *Strong Stack + RRL* (hybrid retrieval +
    query rewriting + multi-query + agent memory), not just retriever-level. The eventual
    deployment-relevant test.
-4. **No-verifier validation** — behavior under purely behavioral/judge feedback (e.g.
+5. **No-verifier validation** — behavior under purely behavioral/judge feedback (e.g.
    cross-model agreement as a pseudo-verifier).
-5. **Degeneracy monitoring** (retrieval concentration / coverage) before any real deployment.
+6. **Degeneracy monitoring** (retrieval concentration / coverage) before any real deployment.
 
 See `ROADMAP.md` for the full plan.
 

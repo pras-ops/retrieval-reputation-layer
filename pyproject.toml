@@ -65,6 +65,7 @@ dev = [
     "scikit-learn>=1.2",
     "pandas>=2.0",  # sim/run_gate_t.py --build reads ToolRet parquet files
     "pyarrow>=14",
+    "mcp>=1.27,<2",  # sim/run_gate_m.py: live MCP tool-selection testbed
 ]
 
 
