@@ -38,64 +38,78 @@ check), so unverified success counts for less than unverified failure.
 > about 1% with every call verified; it is 34–36%). All tables below use the corrected
 > baselines.
 
+> **Fixes after a second review (2026-10-29).** Two implementation issues were fixed and every
+> gate re-run: learned source reliability could give a source that always says "success" a
+> positive vote when verified outcomes were few and unbalanced, and change detection ran a
+> proportion test on soft outcomes. Change detection now tests verified 0/1 outcomes, globally
+> and per context. Baseline numbers are unchanged; RRL numbers moved by about a point in most
+> scenarios (Gate G hard drift: RRL + per-context + verified memory 59.8% → 68.2%).
+
 ## Summary
 
 1. **Learning which tools work beats choosing by description**, including an LLM choosing from
    the tool list. With a poisoned "universal" tool in the registry, the static reranker and
    Gemini pick it almost always (Gemini: 92% of pages; it also planned the injected
    `send_report` call 4–6% of the time) and solve 0–8% of requests; RRL with per-context counters
-   and verified memory solves 43–67% and picks the poisoned tool on about 2% of steps when every
+   and verified memory solves 43–66% and picks the poisoned tool on about 1% of steps when every
    call is verified.
-2. **With sparse verification and tools that over-report success, RRL is the learner that is
-   not fooled.** With spot checks on 20% of calls (Gates W and M), MemRL-style trusts the
-   poisoned tool's own success reports and falls to 3–4%; RRL keeps 43–53%, within 3 points of
-   per-site "reuse what worked" overall and far ahead on new sites (53–80% vs 18–20%).
+2. **With sparse verification and tools that over-report success, learners that trust the
+   reports are fooled; RRL much less so.** With spot checks on 20% of calls (Gates W and M),
+   MemRL-style trusts the poisoned tool's own success reports and falls to 3–4%; RRL keeps
+   43–52%, within 3.5 points of per-site "reuse what worked" overall and far ahead on new sites
+   (56–82% vs 18–20%). It still picks the poisoned tool on 14% of steps (Gate M).
 3. **When every call is verified and contexts recur, a simple per-context memory still wins.**
-   The robust variant of "reuse what worked" beats RRL by 8–21 points in Gates W and M. The same
-   robustness makes it easy to fool: with 20% spot checks it holds on to the poisoned tool on the
-   strength of that tool's own success reports and falls to 22–27%, where RRL keeps 43–53%
-   (+20 to +28 points, 30/30 seeds). Being robust to transient failures *and* hard to fool needs
+   The robust variant of "reuse what worked" beats RRL by 9–16 points in Gates W and M (and by
+   16–17 on the clean registry); bootstrapping over the 30 Gate M shops, that lead is 6.1 points
+   per shop with an interval that includes zero. The same robustness makes it easy to fool: with
+   20% spot checks it holds on to the poisoned tool on the strength of that tool's own success
+   reports and falls to 22–27%, where RRL keeps 43–52% (+19 to +27 points, 30/30 seeds; +32 per
+   shop, 95% interval +21 to +43). Being robust to transient failures *and* hard to fool needs
    unverified success to count for less than a verified one, which that memory lacks.
    **Verified memory closes part of the gap to the original per-site memory.**
    Keeping a verifier-confirmed tool per context lifts RRL by 2–9 points in Gates W and M and
-   cuts "reuse what worked"'s lead from 8–13 to 4–6 points with the poisoned server present
+   cuts "reuse what worked"'s lead from 9–14 to 5–7 points with the poisoned server present
    (10 points under the site redesign). Without the poisoned server that memory still leads by
-   11–16 points. A confidence gate on exploration did nothing: while any tool is untried, the
+   11–15 points. A confidence gate on exploration did nothing: while any tool is untried, the
    current best can never be shown best with 95% confidence.
-4. **On real tool descriptions (Gate T), RRL and MemRL-style are close** (−4.1 to +2.7 points
-   with verified memory; −2.4 to +4.6 at exploration 0.10), and both beat per-request memory by
-   5–15 points because requests rarely repeat.
-5. **Under abrupt change, MemRL-style adapts faster** (Gate G hard: 9–27 points ahead).
+4. **On real tool descriptions (Gate T), RRL and MemRL-style are close** (−3.9 to +2.7 points
+   with verified memory; −2.4 to +4.2 at exploration 0.10), and both beat per-request memory by
+   5–16 points because requests rarely repeat.
+5. **Under abrupt change, MemRL-style adapts faster** (Gate G hard: 9–25 points ahead).
 6. **Per-context counters and verified memory matter most; learned source trust does not.**
-   Per-context counters add 3–12 points where contexts recur (W, M) and do nothing or hurt where
+   Per-context counters add 2–11 points where contexts recur (W, M) and do nothing or hurt where
    they do not (T, G). Replacing learned per-tool reliability with the fixed feedback rule moves
-   results by −3.4 to +3.2 points (better in 9 of 23 scenarios with unverified feedback, worse
-   in 4), and the fixed rule is ahead in the scenario learned trust was built for (Gate M with
-   the poisoned server under spot checks: 55.3% vs 52.4%). Global-only reliability is clearly
-   worse (−7 to −9 points with spot checks, W and M).
-7. **Change detection is a trade-off.** The z-test detector cuts false resets from about 20 to
-   about 2 per run (W, M), but still costs 2–3 points when nothing changes (W, M), reacts later
-   to a real API change than the original rule (G), and does not help against staged defection.
+   results by −3.2 to +2.9 points (learned trust better in 5 of 23 scenarios with unverified
+   feedback, worse in 6; 2 and 1 after a Holm correction), and the fixed rule is ahead in all five
+   spot-check scenarios with the poisoned server, the case learned trust was built for (Gate M:
+   55.3% vs 52.1%). Global-only reliability is clearly worse (−8 to −10 points with spot checks,
+   W and M).
+7. **Change detection is a trade-off.** Testing verified 0/1 outcomes is better than testing the
+   soft learning targets in 6 of 41 scenarios and worse in 2 (Gate G drift with a misleading
+   judge). The z-test cuts false resets from about 20 to about 2 per run against the original
+   fixed-threshold rule (W, M), but still costs 2–3 points when nothing changes (W, M), reacts
+   later to a real API change than that rule (G), and does little against staged defection.
 8. **When the model already knows the answer, retrieval does not matter** (Gate F: reranker
    57.1% = no retrieval 57.2%).
 9. **A tool that turns liar after earning trust erases RRL's advantage.** When the most useful
    honest extractor starts returning wrong results that still report success (Gate M, spot
-   checks), RRL loses 16 points and falls just behind plain per-site memory; no component of
-   RRL protects against it.
+   checks), RRL loses 15 points and falls just behind plain per-site memory (36.8% vs 39.1%);
+   no component of RRL protects against it.
 
 ## What drives the gains: learned trust or a fixed discount?
 
 Replacing learned source reliability with the fixed feedback rule, everything else equal (RRL +
 per-context + verified memory, 30 seeds, paired), in the 23 scenarios that have unverified
-feedback: the two differ by −3.4 to +3.2 points; learned trust is significantly better in 9,
-worse in 4 and indistinguishable in 10. It helps a little where unverified feedback is honest but
-sparse (sparse verifier on Gates T and G: +0.8 to +3.2; clean Gate M with spot checks: +1.4 to
-+1.6) and hurts a little in the case it was designed for: Gate M with the poisoned server under
-spot checks (−2.9, −3.0, −3.4; the fixed rule reaches 55.3% where learned trust reaches 52.4%).
-Learned trust is clearly better only than global-only reliability (−7 to −9 points in Gates M and
-W). The gains over the baselines come from what both variants share: unverified success is
-discounted, and only verified outcomes can lock in a per-context choice. The full list is
-Table B in `paper/main.pdf`, generated by `paper/make_tables.py`.
+feedback: the two differ by −3.2 to +2.9 points; learned trust is significantly better in 5,
+worse in 6 and indistinguishable in 12 (2 and 1 after a Holm correction across the 23 tests). It
+helps a little where the verifier is sparse and other feedback mostly honest (sparse verifier on
+Gate T: +1.6 to +2.9) and is worse in the case it was designed for: in all five spot-check
+scenarios with the poisoned server on Gates M and W the fixed rule is ahead by 2.0–3.2 points
+(Gate M spot check: 55.3% vs 52.1%). Learned trust is clearly better only than global-only
+reliability (−8 to −10 points in Gates M and W). The gains over the baselines come from what both
+variants share: unverified success is discounted, and only verified outcomes can lock in a
+per-context choice. The full list is in Appendix B of `paper/main.pdf`, generated by
+`paper/make_tables.py`.
 
 ## Gate M — tool selection over live MCP servers
 
@@ -119,16 +133,16 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | reuse what worked | 70.9 / 65.0 | 51.8 / 20.3 | 62.9 / 61.3 | 46.5 / 17.9 |
 | reuse what worked, robust | 75.0 / 65.3 | 24.8 / 11.1 | 65.7 / 61.4 | 21.9 / 10.1 |
 | MemRL-style | 35.8 / 45.8 | 3.9 / 1.9 | 33.8 / 32.2 | 3.2 / 1.2 |
-| RRL combined | 45.9 / 57.2 | 42.1 / 60.3 | 42.5 / 51.2 | 37.5 / 44.4 |
-| RRL combined + per-context | 57.8 / 67.6 | 48.8 / 69.4 | 49.8 / 60.4 | 41.1 / 55.7 |
-| RRL + per-context + verified memory | 66.6 / 79.3 | 52.4 / 72.5 | 56.5 / 66.5 | 43.4 / 52.8 |
-| same, fixed feedback rule instead of learned trust | 66.6 / 79.3 | 55.3 / 68.2 | 56.5 / 66.5 | 46.4 / 54.6 |
+| RRL combined | 45.9 / 57.2 | 42.6 / 63.7 | 42.5 / 51.2 | 36.6 / 49.0 |
+| RRL combined + per-context | 57.1 / 67.9 | 47.2 / 68.5 | 48.8 / 45.4 | 39.8 / 53.3 |
+| RRL + per-context + verified memory | 66.3 / 73.9 | 52.1 / 70.0 | 55.9 / 56.5 | 43.2 / 55.6 |
+| same, fixed feedback rule instead of learned trust | 66.3 / 73.9 | 55.3 / 69.0 | 55.9 / 56.5 | 46.3 / 53.6 |
 | best possible | 90.4 / 98.8 | 90.4 / 98.8 | 90.4 / 98.8 | 90.4 / 98.8 |
 
 
 Poisoned tool chosen (share of steps), all calls verified / 20% verified: static reranker
 100% / 100%, Gemini 99% / 99%, MemRL-style 4% / 90%, RRL + per-context + verified memory
-1.4% / 13.0%.
+1.4% / 14.2% (with the fixed feedback rule 1.4% / 12.8%).
 
 ### Gate M — live MCP servers (replayed), clean registry
 
@@ -141,10 +155,10 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | reuse what worked | 77.5 / 89.4 | 77.0 / 89.4 | 70.4 / 85.4 | 69.2 / 85.4 |
 | reuse what worked, robust | 81.8 / 90.3 | 81.6 / 90.3 | 72.5 / 86.0 | 71.3 / 86.0 |
 | MemRL-style | 34.9 / 45.6 | 34.2 / 40.8 | 34.1 / 31.7 | 31.7 / 26.9 |
-| RRL combined | 48.0 / 61.9 | 47.7 / 58.3 | 44.1 / 51.9 | 44.1 / 50.8 |
-| RRL combined + per-context | 58.8 / 67.5 | 58.1 / 68.3 | 50.8 / 62.8 | 50.0 / 61.5 |
-| RRL + per-context + verified memory | 66.3 / 75.7 | 61.0 / 68.8 | 56.0 / 65.0 | 52.7 / 63.6 |
-| same, fixed feedback rule instead of learned trust | 66.3 / 75.7 | 59.6 / 69.4 | 56.0 / 65.0 | 51.2 / 59.3 |
+| RRL combined | 48.0 / 61.9 | 48.2 / 61.8 | 44.1 / 51.9 | 45.2 / 56.0 |
+| RRL combined + per-context | 58.2 / 67.2 | 57.5 / 67.1 | 49.9 / 50.3 | 49.3 / 57.1 |
+| RRL + per-context + verified memory | 66.3 / 72.4 | 60.0 / 72.2 | 55.8 / 56.0 | 51.2 / 58.8 |
+| same, fixed feedback rule instead of learned trust | 66.3 / 72.4 | 59.6 / 70.1 | 55.8 / 56.0 | 51.1 / 57.1 |
 | best possible | 90.4 / 98.8 | 90.4 / 98.8 | 90.4 / 98.8 | 90.4 / 98.8 |
 
 
@@ -185,17 +199,19 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | reuse what worked | 66.7 / 64.4 | 63.0 / 64.4 |
 | reuse what worked, robust | 68.2 / 65.3 | 63.7 / 65.3 |
 | MemRL-style | 33.8 / 58.5 | 17.2 / 4.0 |
-| RRL combined | 39.8 / 61.7 | 34.1 / 56.5 |
-| RRL combined + per-context | 43.0 / 64.7 | 40.8 / 62.2 |
-| RRL + per-context + verified memory | 50.5 / 63.7 | 43.7 / 62.1 |
-| same, fixed feedback rule instead of learned trust | 50.5 / 63.7 | 42.1 / 58.6 |
+| RRL combined | 39.8 / 61.7 | 37.6 / 60.6 |
+| RRL combined + per-context | 43.8 / 65.3 | 40.6 / 62.1 |
+| RRL + per-context + verified memory | 52.0 / 62.2 | 42.9 / 63.3 |
+| same, fixed feedback rule instead of learned trust | 52.0 / 62.2 | 42.5 / 59.7 |
 | best possible | 83.6 / 82.2 | 83.6 / 82.2 |
 
-Every learner loses. Under spot checks RRL + per-context + verified memory loses 16.2 points
+Every learner loses. Under spot checks RRL + per-context + verified memory loses 15.3 points
 against the same scenario without defection (best possible: 6.7); it still beats the robust
-memory (+18.6) but falls behind plain "reuse what worked" (36.2% vs 39.1%, 7/30 seeds). Without
-the poisoned server the robust memory keeps its lead (63.7% vs 43.7%). Change detection does not
-help (RRL combined 30.5% with it, 32.0% without), nor does the fixed feedback rule (39.6%).
+memory (+19.2) but falls behind plain "reuse what worked" (36.8% vs 39.1%, 9/30 seeds). Without
+the poisoned server the robust memory keeps its lead (63.7% vs 42.9%). The change detector now
+tests verified outcomes, but at 20% verification a tool needs about 80 calls to fill two
+windows of 8 verified outcomes and it fires 0.8 times per run; RRL combined solves 31.6% with it
+and 31.2% without. The fixed feedback rule does not help either (40.0%).
 
 **Live check.** The same policies run with real MCP calls on every step (3 seeds):
 
@@ -207,8 +223,8 @@ help (RRL combined 30.5% with it, 32.0% without), nor does the fixed feedback ru
 | reuse what worked, robust | 75.0 | 77.2 | 65.7 | 67.9 |
 | MemRL-style | 35.8 | 37.7 | 33.8 | 35.0 |
 | RRL combined | 45.9 | 47.4 | 42.5 | 44.3 |
-| RRL + per-context | 57.8 | 57.9 | 49.8 | 49.8 |
-| RRL + per-context + verified memory | 66.6 | 66.2 | 56.5 | 58.6 |
+| RRL + per-context | 57.1 | 57.5 | 48.8 | 48.4 |
+| RRL + per-context + verified memory | 66.3 | 65.7 | 55.9 | 56.9 |
 
 Live and replay agree within about 2 points, except "reuse what worked", which does 6 points
 better live: the replay adds 2% transient failures on every tool, the local servers had none
@@ -233,10 +249,10 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | reuse what worked | 46.0 / 33.0 | 46.0 / 33.0 | 41.1 / 33.0 | 39.9 / 33.0 | 41.0 / 30.3 | 35.2 / 30.3 |
 | reuse what worked, robust | 46.4 / 33.0 | 46.4 / 33.0 | 39.8 / 33.0 | 39.7 / 33.0 | 40.4 / 30.3 | 34.1 / 30.3 |
 | MemRL-style | 55.5 / 45.3 | 54.8 / 44.7 | 50.0 / 42.7 | 45.5 / 39.2 | 51.0 / 42.3 | 41.9 / 38.2 |
-| RRL combined | 52.5 / 50.1 | 50.5 / 50.0 | 45.2 / 46.6 | 44.2 / 43.3 | 48.1 / 48.7 | 41.4 / 44.0 |
-| RRL combined, explore 0.10 | 56.4 / 51.9 | 54.5 / 52.0 | 47.6 / 49.8 | 47.0 / 46.8 | 51.0 / 51.6 | 43.5 / 45.6 |
-| RRL combined + per-context | 52.3 / 50.0 | 50.4 / 49.7 | 45.2 / 46.9 | 44.1 / 43.7 | 47.9 / 48.1 | 41.1 / 43.7 |
-| RRL + per-context + verified memory | 55.3 / 48.4 | 51.2 / 49.5 | 45.9 / 45.6 | 45.0 / 42.8 | 49.5 / 48.5 | 42.0 / 42.6 |
+| RRL combined | 52.5 / 50.1 | 50.4 / 49.6 | 45.4 / 45.4 | 44.5 / 43.6 | 48.1 / 48.7 | 41.5 / 42.1 |
+| RRL combined, explore 0.10 | 56.4 / 51.9 | 54.3 / 52.0 | 47.6 / 49.1 | 46.9 / 46.0 | 51.0 / 51.6 | 43.4 / 45.2 |
+| RRL combined + per-context | 52.3 / 50.0 | 50.4 / 49.6 | 45.3 / 45.8 | 44.3 / 43.1 | 47.9 / 48.1 | 41.5 / 43.7 |
+| RRL + per-context + verified memory | 55.3 / 48.4 | 50.9 / 49.9 | 46.2 / 46.3 | 45.2 / 42.8 | 49.5 / 48.5 | 41.8 / 42.8 |
 | same, fixed feedback rule instead of learned trust | 55.3 / 48.4 | 48.0 / 46.6 | 45.7 / 44.9 | 44.7 / 43.1 | 49.5 / 48.5 | 41.2 / 41.7 |
 | best possible | 89.9 / 89.4 | 89.9 / 89.4 | 89.9 / 89.4 | 89.9 / 89.4 | 88.6 / 87.1 | 88.6 / 87.1 |
 
@@ -248,12 +264,12 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | Policy | stationary | sparse_verifier | sycophantic | fooled | drift | drift_fooled |
 |---|---|---|---|---|---|---|
 | RRL, reranker input only | 52.5 / 50.1 | 47.2 / 47.2 | 44.9 / 43.0 | 43.9 / 43.1 | 48.1 / 48.7 | 40.9 / 42.6 |
-| combined, global-only reliability | 52.5 / 50.1 | 50.5 / 49.7 | 45.4 / 46.4 | 44.0 / 43.6 | 48.1 / 48.7 | 41.2 / 43.7 |
-| combined, no change detection | 52.5 / 50.1 | 50.5 / 50.0 | 45.2 / 46.6 | 44.2 / 43.3 | 48.1 / 48.7 | 41.4 / 44.0 |
-| combined, old detector (w=4, 0.6) | 52.5 / 50.1 | 50.5 / 50.0 | 45.2 / 46.6 | 44.2 / 43.3 | 48.1 / 48.7 | 41.4 / 44.0 |
-| combined, exploration off | 58.9 / 50.9 | 56.8 / 50.3 | 48.4 / 47.1 | 47.7 / 45.8 | 52.9 / 52.0 | 44.6 / 46.5 |
-| combined, confidence-gated exploration | 52.5 / 49.8 | 50.5 / 49.0 | 45.2 / 46.6 | 44.2 / 43.4 | 48.0 / 48.1 | 41.4 / 44.0 |
-| per-context + confidence-gated exploration | 52.3 / 49.5 | 50.4 / 49.8 | 45.2 / 46.9 | 44.1 / 43.8 | 48.0 / 48.9 | 41.1 / 43.4 |
+| combined, global-only reliability | 52.5 / 50.1 | 50.4 / 49.4 | 45.5 / 45.9 | 44.4 / 42.6 | 48.1 / 48.7 | 41.6 / 42.9 |
+| combined, no change detection | 52.5 / 50.1 | 50.4 / 49.6 | 45.4 / 45.4 | 44.5 / 43.6 | 48.1 / 48.7 | 41.5 / 42.1 |
+| combined, old detector (w=4, 0.6) | 52.5 / 50.1 | 50.4 / 49.6 | 45.4 / 45.4 | 44.5 / 43.6 | 48.1 / 48.7 | 41.5 / 42.1 |
+| combined, exploration off | 58.9 / 50.9 | 57.0 / 50.4 | 48.5 / 47.2 | 47.6 / 45.6 | 52.9 / 52.0 | 44.5 / 46.5 |
+| combined, confidence-gated exploration | 52.5 / 49.8 | 50.4 / 49.7 | 45.4 / 45.3 | 44.5 / 43.6 | 48.0 / 48.1 | 41.5 / 42.1 |
+| per-context + confidence-gated exploration | 52.3 / 49.5 | 50.4 / 49.3 | 45.3 / 46.3 | 44.3 / 43.1 | 48.0 / 48.9 | 41.5 / 43.7 |
 
 
 ### Gate T — tool selection, ToolLens (ToolRet)
@@ -266,11 +282,11 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | reuse what worked | 42.9 / 32.2 | 42.9 / 32.2 | 38.2 / 32.2 | 34.7 / 32.2 | 36.2 / 25.2 | 29.7 / 25.2 |
 | reuse what worked, robust | 43.5 / 32.2 | 43.5 / 32.2 | 37.1 / 32.2 | 34.3 / 32.2 | 35.7 / 25.2 | 28.6 / 25.2 |
 | MemRL-style | 55.4 / 57.9 | 54.3 / 56.8 | 51.7 / 56.3 | 43.9 / 50.3 | 52.4 / 55.4 | 40.6 / 42.0 |
-| RRL combined | 56.1 / 55.6 | 53.7 / 56.4 | 48.1 / 52.1 | 46.2 / 50.3 | 49.9 / 52.0 | 41.6 / 42.3 |
-| RRL combined, explore 0.10 | 59.1 / 60.3 | 55.8 / 58.4 | 50.6 / 54.6 | 48.5 / 52.8 | 52.2 / 53.1 | 43.6 / 42.3 |
-| RRL combined + per-context | 56.1 / 55.9 | 53.6 / 57.2 | 48.0 / 51.5 | 46.2 / 49.2 | 49.7 / 50.7 | 41.9 / 43.9 |
-| RRL + per-context + verified memory | 58.1 / 55.8 | 54.2 / 57.2 | 48.7 / 51.1 | 46.3 / 49.8 | 50.4 / 51.2 | 41.8 / 45.0 |
-| same, fixed feedback rule instead of learned trust | 58.1 / 55.8 | 52.1 / 53.9 | 49.4 / 53.3 | 47.2 / 50.5 | 50.4 / 51.2 | 42.3 / 45.8 |
+| RRL combined | 56.1 / 55.6 | 53.4 / 56.0 | 48.1 / 51.5 | 45.7 / 49.3 | 49.9 / 52.0 | 41.6 / 45.8 |
+| RRL combined, explore 0.10 | 59.1 / 60.3 | 56.4 / 59.5 | 50.5 / 55.9 | 48.0 / 50.6 | 52.2 / 53.1 | 42.9 / 41.9 |
+| RRL combined + per-context | 56.1 / 55.9 | 53.4 / 57.1 | 48.0 / 52.1 | 45.5 / 47.7 | 49.9 / 51.9 | 41.4 / 45.5 |
+| RRL + per-context + verified memory | 58.1 / 55.8 | 53.8 / 55.5 | 48.2 / 51.2 | 46.5 / 49.5 | 50.6 / 52.5 | 41.5 / 43.7 |
+| same, fixed feedback rule instead of learned trust | 58.1 / 55.8 | 52.1 / 53.9 | 49.4 / 53.3 | 47.2 / 50.5 | 50.6 / 52.5 | 42.3 / 45.8 |
 | best possible | 85.1 / 81.1 | 85.1 / 81.1 | 85.1 / 81.1 | 85.1 / 81.1 | 84.7 / 83.2 | 84.7 / 83.2 |
 
 
@@ -281,12 +297,12 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | Policy | stationary | sparse_verifier | sycophantic | fooled | drift | drift_fooled |
 |---|---|---|---|---|---|---|
 | RRL, reranker input only | 56.1 / 55.6 | 51.5 / 53.5 | 48.8 / 51.2 | 46.6 / 51.0 | 49.6 / 50.8 | 42.0 / 45.2 |
-| combined, global-only reliability | 56.1 / 55.6 | 53.8 / 56.4 | 48.1 / 52.2 | 46.2 / 50.1 | 49.9 / 52.0 | 41.8 / 42.3 |
-| combined, no change detection | 56.1 / 55.6 | 53.7 / 56.4 | 48.1 / 52.1 | 46.2 / 50.3 | 49.6 / 50.8 | 41.5 / 41.8 |
-| combined, old detector (w=4, 0.6) | 56.0 / 55.2 | 53.7 / 56.3 | 48.1 / 52.2 | 46.2 / 50.3 | 50.3 / 51.5 | 41.8 / 43.2 |
-| combined, exploration off | 60.2 / 59.8 | 57.4 / 60.0 | 51.5 / 54.8 | 49.1 / 52.3 | 53.4 / 50.2 | 42.8 / 41.2 |
-| combined, confidence-gated exploration | 56.3 / 57.1 | 53.8 / 57.2 | 48.1 / 52.5 | 46.2 / 50.8 | 49.9 / 51.5 | 41.6 / 42.3 |
-| per-context + confidence-gated exploration | 56.3 / 55.2 | 53.6 / 56.3 | 47.9 / 51.0 | 46.2 / 49.0 | 49.3 / 50.6 | 41.9 / 43.8 |
+| combined, global-only reliability | 56.1 / 55.6 | 53.5 / 55.6 | 48.6 / 52.4 | 46.1 / 49.4 | 49.9 / 52.0 | 41.7 / 44.0 |
+| combined, no change detection | 56.1 / 55.6 | 53.4 / 56.0 | 48.1 / 51.5 | 45.7 / 49.3 | 49.6 / 50.8 | 41.6 / 45.8 |
+| combined, old detector (w=4, 0.6) | 56.0 / 55.2 | 53.5 / 56.5 | 48.1 / 51.4 | 45.7 / 49.2 | 50.3 / 51.5 | 41.9 / 45.7 |
+| combined, exploration off | 60.2 / 59.8 | 57.6 / 59.8 | 51.7 / 55.8 | 48.9 / 52.5 | 53.4 / 50.2 | 42.6 / 37.8 |
+| combined, confidence-gated exploration | 56.3 / 57.1 | 53.8 / 57.4 | 48.0 / 50.7 | 45.7 / 49.6 | 49.9 / 51.5 | 41.6 / 45.7 |
+| per-context + confidence-gated exploration | 56.3 / 55.2 | 53.6 / 58.3 | 48.2 / 53.6 | 45.5 / 47.4 | 49.7 / 51.7 | 41.4 / 45.2 |
 
 
 ## Gate W — web-scraping extractor selection (executable)
@@ -306,11 +322,11 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | reuse what worked | 67.0 / 61.4 | 50.4 / 19.6 | 64.2 / 58.5 | 47.9 / 17.5 |
 | reuse what worked, robust | 73.9 / 61.9 | 27.0 / 11.0 | 70.4 / 58.9 | 25.2 / 10.3 |
 | MemRL-style | 35.9 / 43.3 | 4.4 / 3.6 | 34.0 / 32.1 | 4.3 / 3.5 |
-| RRL combined | 51.4 / 68.9 | 46.4 / 72.9 | 45.5 / 53.5 | 39.4 / 54.0 |
-| RRL combined, explore 0.10 | 52.6 / 72.4 | 47.1 / 65.7 | 46.2 / 54.2 | 40.4 / 52.4 |
-| RRL combined + per-context | 59.0 / 80.3 | 50.5 / 79.4 | 51.3 / 65.0 | 42.2 / 58.5 |
-| RRL + per-context + verified memory | 62.5 / 85.7 | 53.1 / 79.6 | 54.1 / 66.5 | 45.4 / 61.9 |
-| same, fixed feedback rule instead of learned trust | 62.5 / 85.7 | 54.0 / 77.2 | 54.1 / 66.5 | 46.5 / 61.1 |
+| RRL combined | 51.4 / 68.9 | 47.1 / 75.4 | 45.5 / 53.5 | 39.5 / 53.1 |
+| RRL combined, explore 0.10 | 52.6 / 72.4 | 49.4 / 76.4 | 46.2 / 54.2 | 41.9 / 60.3 |
+| RRL combined + per-context | 58.2 / 76.5 | 49.6 / 77.1 | 50.7 / 57.6 | 41.9 / 57.6 |
+| RRL + per-context + verified memory | 62.0 / 79.6 | 52.1 / 81.8 | 54.1 / 60.7 | 44.4 / 61.0 |
+| same, fixed feedback rule instead of learned trust | 62.0 / 79.6 | 54.1 / 77.6 | 54.1 / 60.7 | 46.6 / 61.0 |
 | best possible | 87.9 / 96.4 | 87.9 / 96.4 | 87.9 / 96.4 | 87.9 / 96.4 |
 
 
@@ -321,12 +337,12 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | Policy | stationary | spot_check | redesign | redesign_spot_check |
 |---|---|---|---|---|
 | RRL, reranker input only | 53.9 / 78.2 | 47.3 / 74.3 | 48.0 / 64.9 | 40.2 / 59.6 |
-| combined, global-only reliability | 51.4 / 68.9 | 38.3 / 57.8 | 45.5 / 53.5 | 30.2 / 29.2 |
-| combined, no change detection | 53.9 / 78.2 | 47.5 / 75.8 | 48.0 / 64.9 | 40.4 / 59.0 |
-| combined, old detector (w=4, 0.6) | 44.6 / 60.3 | 40.9 / 59.9 | 39.7 / 39.4 | 34.6 / 31.8 |
-| combined, exploration off | 51.7 / 66.0 | 45.8 / 58.6 | 45.2 / 49.3 | 38.6 / 39.7 |
-| combined, confidence-gated exploration | 51.4 / 68.9 | 46.4 / 72.9 | 45.5 / 53.5 | 39.4 / 54.0 |
-| per-context + confidence-gated exploration | 59.0 / 80.3 | 50.5 / 79.4 | 51.3 / 65.0 | 42.2 / 58.5 |
+| combined, global-only reliability | 51.4 / 68.9 | 38.1 / 56.5 | 45.5 / 53.5 | 29.7 / 24.4 |
+| combined, no change detection | 53.9 / 78.2 | 47.3 / 76.8 | 48.0 / 64.9 | 40.0 / 56.9 |
+| combined, old detector (w=4, 0.6) | 44.6 / 60.3 | 40.5 / 61.3 | 39.7 / 39.4 | 34.1 / 31.9 |
+| combined, exploration off | 51.7 / 66.0 | 48.4 / 71.5 | 45.2 / 49.3 | 40.8 / 56.1 |
+| combined, confidence-gated exploration | 51.4 / 68.9 | 47.1 / 75.7 | 45.5 / 53.5 | 39.5 / 53.8 |
+| per-context + confidence-gated exploration | 58.2 / 76.5 | 49.6 / 77.1 | 50.7 / 57.8 | 41.9 / 57.6 |
 
 
 ## Gate G hard — private-API documents with a poisoned reranker
@@ -345,11 +361,11 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | reuse what worked | 83.7 / 50.0 | 76.0 / 50.0 | 64.8 / 50.0 | 51.3 / 0.0 | 39.1 / 0.0 | 40.1 / 0.0 |
 | reuse what worked, robust | 83.7 / 50.0 | 70.4 / 50.0 | 59.4 / 50.0 | 34.8 / 0.0 | 29.8 / 0.0 | 26.3 / 0.0 |
 | MemRL-style | 96.0 / 100.0 | 93.1 / 100.0 | 89.7 / 99.4 | 80.9 / 95.5 | 73.7 / 93.8 | 74.8 / 93.9 |
-| RRL combined | 96.5 / 100.0 | 90.2 / 99.8 | 88.0 / 98.8 | 71.7 / 96.7 | 52.4 / 65.2 | 56.7 / 75.7 |
-| RRL combined, explore 0.10 | 97.7 / 100.0 | 93.1 / 99.8 | 90.5 / 97.8 | 75.5 / 95.0 | 54.2 / 67.9 | 59.9 / 78.8 |
-| RRL combined + per-context | 96.5 / 100.0 | 89.9 / 99.8 | 87.5 / 99.2 | 61.3 / 76.0 | 48.4 / 51.6 | 52.9 / 70.2 |
-| RRL + per-context + verified memory | 96.5 / 100.0 | 90.3 / 99.8 | 88.1 / 99.4 | 59.8 / 74.7 | 46.9 / 53.1 | 50.5 / 70.1 |
-| same, fixed feedback rule instead of learned trust | 96.5 / 100.0 | 90.4 / 98.8 | 88.0 / 97.4 | 59.8 / 74.7 | 48.6 / 50.4 | 48.8 / 64.0 |
+| RRL combined | 96.5 / 100.0 | 90.7 / 99.7 | 87.8 / 98.9 | 71.7 / 96.7 | 51.3 / 56.2 | 54.2 / 70.8 |
+| RRL combined, explore 0.10 | 97.7 / 100.0 | 92.7 / 99.8 | 90.4 / 98.9 | 75.5 / 95.0 | 50.3 / 50.7 | 55.5 / 66.8 |
+| RRL combined + per-context | 96.5 / 100.0 | 90.6 / 99.8 | 87.5 / 98.8 | 70.0 / 95.6 | 50.7 / 57.5 | 53.3 / 71.2 |
+| RRL + per-context + verified memory | 96.5 / 100.0 | 90.8 / 99.9 | 87.8 / 99.4 | 68.2 / 97.9 | 48.7 / 55.2 | 49.6 / 67.4 |
+| same, fixed feedback rule instead of learned trust | 96.5 / 100.0 | 90.4 / 98.8 | 88.0 / 97.4 | 68.2 / 97.9 | 48.6 / 50.4 | 48.8 / 64.0 |
 | best possible | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 |
 
 
@@ -360,12 +376,12 @@ Overall / held-out pass rate (%), mean of 30 seeds.
 | Policy | stationary | sycophantic | fooled | drift | drift_sycophantic | drift_fooled |
 |---|---|---|---|---|---|---|
 | RRL, reranker input only | 96.5 / 100.0 | 90.3 / 98.5 | 87.5 / 97.9 | 62.5 / 77.1 | 51.1 / 52.0 | 52.1 / 68.4 |
-| combined, global-only reliability | 96.5 / 100.0 | 90.0 / 99.6 | 87.7 / 98.5 | 71.7 / 96.7 | 52.1 / 66.9 | 56.3 / 75.3 |
-| combined, no change detection | 96.5 / 100.0 | 90.2 / 99.8 | 88.0 / 98.8 | 62.5 / 77.1 | 49.3 / 53.6 | 54.2 / 69.4 |
-| combined, old detector (w=4, 0.6) | 96.5 / 100.0 | 90.2 / 99.7 | 88.0 / 98.7 | 80.6 / 99.1 | 60.6 / 78.9 | 63.9 / 82.3 |
-| combined, exploration off | 97.7 / 100.0 | 89.9 / 97.3 | 88.2 / 95.8 | 76.8 / 100.0 | 50.6 / 58.3 | 56.1 / 72.6 |
-| combined, confidence-gated exploration | 96.4 / 100.0 | 90.2 / 99.8 | 88.0 / 98.8 | 72.1 / 98.2 | 52.5 / 66.1 | 56.7 / 76.1 |
-| per-context + confidence-gated exploration | 96.4 / 100.0 | 89.9 / 99.8 | 87.4 / 99.1 | 61.3 / 74.9 | 48.5 / 51.8 | 52.8 / 70.4 |
+| combined, global-only reliability | 96.5 / 100.0 | 90.8 / 99.7 | 87.9 / 98.9 | 71.7 / 96.7 | 51.4 / 57.5 | 54.4 / 71.3 |
+| combined, no change detection | 96.5 / 100.0 | 90.7 / 99.7 | 87.8 / 98.9 | 62.5 / 77.1 | 51.3 / 56.2 | 54.2 / 70.8 |
+| combined, old detector (w=4, 0.6) | 96.5 / 100.0 | 90.7 / 99.7 | 87.8 / 98.8 | 80.6 / 99.1 | 62.4 / 80.2 | 64.2 / 82.5 |
+| combined, exploration off | 97.7 / 100.0 | 91.1 / 98.8 | 89.5 / 97.4 | 76.8 / 100.0 | 45.4 / 36.8 | 50.8 / 52.1 |
+| combined, confidence-gated exploration | 96.4 / 100.0 | 90.7 / 99.8 | 87.8 / 99.1 | 72.1 / 98.2 | 51.3 / 56.0 | 54.3 / 72.9 |
+| per-context + confidence-gated exploration | 96.4 / 100.0 | 90.7 / 100.0 | 87.6 / 99.2 | 70.4 / 97.2 | 50.4 / 56.8 | 53.2 / 71.2 |
 
 
 ## Gate F — MBPP, leak-free
@@ -380,9 +396,9 @@ related MBPP solutions (never the question's own).
 | static reranker | 57.1 | 57.1 | 57.1 | 56.3 |
 | reuse what worked | 60.4 | 60.4 | 59.9 | 58.7 |
 | MemRL-style | 57.7 | 57.8 | 57.4 | 57.2 |
-| RRL combined | 58.4 | 57.7 | 57.7 | 57.1 |
-| RRL + per-context | 58.7 | 58.0 | 57.9 | 57.3 |
-| RRL + per-context + verified memory | 59.3 | 58.5 | 57.9 | 57.8 |
+| RRL combined | 58.4 | 58.0 | 57.5 | 57.1 |
+| RRL + per-context | 58.7 | 58.4 | 57.8 | 57.3 |
+| RRL + per-context + verified memory | 59.3 | 58.5 | 58.2 | 57.8 |
 | best possible | 61.3 | 61.3 | 61.3 | 61.3 |
 
 Retrieval barely matters here: the reranker matches no retrieval, the most and least similar
@@ -401,6 +417,11 @@ the value of learning which documents help, which is why Gates G, T, W and M wer
 - **The benchmark exploration weight (0.30) predates these results**; the ablation favours the
   library default (0.10) in Gates T and G. Both are reported rather than re-picking the main
   configuration after seeing the results.
+- **Seed-level intervals** vary request order, noise and exploration over the same contexts;
+  only the primary Gate M comparison also has a shop-level bootstrap (`paper/site_stats.py`).
+- **A verified success stays authoritative** for a context until a verified failure; staged
+  defection shows the cost. Version-aware memory, periodic audits and a limit on how long a
+  success counts without re-verification are untested.
 
 ---
 

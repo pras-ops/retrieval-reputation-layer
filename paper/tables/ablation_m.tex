@@ -5,19 +5,20 @@
 \toprule
 Overall / held-out success (\%) & Verified & Spot check & Update & Update + spot \\
 \midrule
-Relevance + reputation only & 48.3 / 65.0 & 44.3 / 63.5 & 45.3 / 60.8 & 38.9 / 52.2 \\
-Global-only source trust & 45.9 / 57.2 & 35.0 / 53.3 & 42.5 / 51.2 & 28.5 / 27.1 \\
-No change detection & 48.3 / 65.0 & 43.7 / 64.4 & 45.3 / 60.8 & 38.8 / 51.8 \\
-Fixed-threshold detector & 42.6 / 57.2 & 38.2 / 55.4 & 39.3 / 39.7 & 33.6 / 32.5 \\
-Exploration off & 44.6 / 55.3 & 42.2 / 52.8 & 40.7 / 45.1 & 38.0 / 36.2 \\
-Exploration 0.10 & 44.6 / 51.0 & 42.9 / 53.5 & 41.6 / 46.5 & 39.8 / 46.9 \\
-Confidence-gated exploration & 45.9 / 57.2 & 42.1 / 60.3 & 42.5 / 51.2 & 37.5 / 44.4 \\
-RRL (global) & 45.9 / 57.2 & 42.1 / 60.3 & 42.5 / 51.2 & 37.5 / 44.4 \\
-RRL + per-context & 57.8 / 67.6 & 48.8 / 69.4 & 49.8 / 60.4 & 41.1 / 55.7 \\
-\textbf{RRL full} & \textbf{66.6} / 79.3 & 52.4 / 72.5 & \textbf{56.5} / 66.5 & 43.4 / 52.8 \\
-RRL full, fixed rule & 66.6 / 79.3 & \textbf{55.3} / 68.2 & 56.5 / 66.5 & \textbf{46.4} / 54.6 \\
+No learned trust, no change detection & 48.3 / 65.0 & 44.3 / 63.5 & 45.3 / 60.8 & 38.9 / 52.2 \\
+Global-only source trust & 45.9 / 57.2 & 34.3 / 52.5 & 42.5 / 51.2 & 26.7 / 23.3 \\
+No change detection & 48.3 / 65.0 & 42.7 / 64.2 & 45.3 / 60.8 & 37.3 / 50.4 \\
+Fixed-threshold detector, soft outcomes & 42.6 / 57.2 & 36.9 / 54.2 & 39.3 / 39.7 & 32.5 / 34.4 \\
+z-test on soft outcomes & 45.9 / 57.2 & 42.0 / 62.1 & 42.5 / 51.2 & 36.0 / 43.6 \\
+Exploration off & 44.6 / 55.3 & 44.6 / 60.7 & 40.7 / 45.1 & 39.5 / 52.1 \\
+Exploration 0.10 & 44.6 / 51.0 & 44.7 / 63.6 & 41.6 / 46.5 & 40.7 / 56.4 \\
+Confidence-gated exploration & 45.9 / 57.2 & 42.6 / 63.7 & 42.5 / 51.2 & 36.6 / 49.0 \\
+RRL (global) & 45.9 / 57.2 & 42.6 / 63.7 & 42.5 / 51.2 & 36.6 / 49.0 \\
+RRL + per-context & 57.1 / 67.9 & 47.2 / 68.5 & 48.8 / 45.4 & 39.8 / 53.3 \\
+\textbf{RRL full} & \textbf{66.3} / 73.9 & 52.1 / 70.0 & \textbf{55.9} / 56.5 & 43.2 / 55.6 \\
+RRL full, fixed rule & 66.3 / 73.9 & \textbf{55.3} / 69.0 & 55.9 / 56.5 & \textbf{46.3} / 53.6 \\
 \bottomrule
 \end{tabular}
-\caption{Ablations on Gate M (overall / held-out success, \%). Each row changes one component of RRL (global); the last two rows add per-context counters and verified memory.}
+\caption{Ablations on Gate M (overall / held-out success, \%). Each row changes one component of RRL (global); the last three rows add per-context counters, then verified memory, then swap learned trust for the fixed rule.}
 \label{tab:ablation}
 \end{table*}

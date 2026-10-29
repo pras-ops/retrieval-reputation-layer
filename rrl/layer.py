@@ -337,9 +337,18 @@ class ReputationLayer:
                 if candidate is not None:
                     candidate.get_cluster(cluster_id)["last_verified"] = 1.0 if s_gt > 0.5 else 0.0
                     self.store.update_candidate(candidate)
-        if self.change_detector is not None:
+        detector = self.change_detector
+        # A detector on verified outcomes only learns something when the verifier ran.
+        if detector is not None and (detector.history == "soft" or s_gt is not None):
             for cid in shares:
+                if detector.history == "verified" and s_gt is not None:
+                    detector.observe(cid, s_gt > 0.5, cluster_id)
                 candidate = self.store.get_candidate(cid)
-                if candidate is not None and self.change_detector.check(candidate, cluster_id):
+                if candidate is None:
+                    continue
+                changed = detector.check(candidate)
+                if cluster_id is not None:
+                    changed = detector.check(candidate, cluster_id) or changed
+                if changed:
                     self.store.update_candidate(candidate)
         return shares

@@ -7,6 +7,7 @@ paper is typed by hand.
 
 import json
 import os
+import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RES = os.path.abspath(os.path.join(HERE, "..", "sim", "results"))
@@ -23,10 +24,11 @@ LABEL = {
     "rrl_combined_ctx_verified": "\\textbf{RRL full}",
     "rrl_combined_ctx_verified_fixed": "RRL full, fixed rule",
     "oracle": "\\textit{Best possible}",
-    "rrl_ce": "Relevance + reputation only",
+    "rrl_ce": "No learned trust, no change detection",
     "rrl_combined_globalrel": "Global-only source trust",
     "rrl_combined_nocd": "No change detection",
-    "rrl_combined_cdold": "Fixed-threshold detector",
+    "rrl_combined_cdold": "Fixed-threshold detector, soft outcomes",
+    "rrl_combined_cdsoft": "z-test on soft outcomes",
     "rrl_combined_e0": "Exploration off",
     "rrl_combined_e10": "Exploration 0.10",
     "rrl_combined_conf": "Confidence-gated exploration",
@@ -58,7 +60,7 @@ def pct(x: float) -> str:
     return f"{x * 100:.1f}"
 
 
-def table(name, caption, label, stem, scens, policies, heldout=True, best_from=None):
+def table(name, caption, label, stem, scens, policies, heldout=True, best_from=None, env="table*"):
     data = {sc: load(stem, sc) for sc in scens}
     cols = "l" + "r" * len(scens)
     head = " & ".join(SCEN[s] for s in scens)
@@ -88,7 +90,8 @@ def table(name, caption, label, stem, scens, policies, heldout=True, best_from=N
     sep = "\\setlength{\\tabcolsep}{3.5pt}\n" if len(scens) > 4 else ""
     note = "Overall / held-out success (\\%)" if heldout else "Success (\\%)"
     body = "\n".join(rows)
-    tex = f"""\\begin{{table*}}[t]
+    place = "[H]" if env == "table" else "[t]"
+    tex = f"""\\begin{{{env}}}{place}
 \\centering
 \\small
 {sep}\\begin{{tabular}}{{{cols}}}
@@ -100,7 +103,7 @@ def table(name, caption, label, stem, scens, policies, heldout=True, best_from=N
 \\end{{tabular}}
 \\caption{{{caption}}}
 \\label{{{label}}}
-\\end{{table*}}
+\\end{{{env}}}
 """
     with open(os.path.join(OUT, name + ".tex"), "w") as f:
         f.write(tex)
@@ -116,6 +119,17 @@ TRUST_STEMS = [
 ]
 LEARNED = "rrl_combined_ctx_verified_vs_rrl_combined_ctx_verified_fixed"
 GLOBAL = "rrl_combined_globalrel_vs_rrl_combined"
+
+
+def holm_reject(ps, alpha=0.05):
+    """Holm step-down: which hypotheses are rejected at family-wise level alpha."""
+    order = sorted(range(len(ps)), key=lambda i: ps[i])
+    out = [False] * len(ps)
+    for rank, i in enumerate(order):
+        if ps[i] > alpha / (len(ps) - rank):
+            break
+        out[i] = True
+    return out
 
 
 def trust_rows():
@@ -138,11 +152,16 @@ def trust_rows():
     return rows
 
 
+def minus(v: str) -> str:
+    """Typeset a leading or bracketed minus sign as a real minus, leaving en dashes (--) alone."""
+    return re.sub(r"(?<![-\d])-(?=\d)", "$-$", v)
+
+
 def fmt_diff(c):
     lo, hi = c["ci95"]
-    v = f"{c['mean_diff'] * 100:+.1f}"
+    v = minus(f"{c['mean_diff'] * 100:+.1f}")
     v = f"\\textbf{{{v}}}" if lo > 0 or hi < 0 else v
-    return f"{v} [{lo * 100:+.1f}, {hi * 100:+.1f}]"
+    return f"{v} [{minus(f'{lo * 100:+.1f}')}, {minus(f'{hi * 100:+.1f}')}]"
 
 
 def trust_table():
@@ -151,7 +170,7 @@ def trust_table():
         name = SCEN.get(sc, sc.replace("_", " "))
         body.append(f"{gate} & {name} & {fmt_diff(c[LEARNED])} & {fmt_diff(c[GLOBAL])} \\\\")
     tex = (
-        "\\begin{table}[h]\n\\centering\n\\small\n\\begin{tabular}{llrr}\n\\toprule\n"
+        "\\begin{table}[H]\n\\centering\n\\small\n\\begin{tabular}{llrr}\n\\toprule\n"
         "Gate & Scenario & Learned $-$ fixed & Global-only $-$ per-tool \\\\\n\\midrule\n"
         + "\n".join(body)
         + "\n\\bottomrule\n\\end{tabular}\n"
@@ -258,6 +277,10 @@ def numbers():
     resets = load("gate_w", "stationary")["change_detector_resets"]
     m["WresetsOld"] = f"{resets['rrl_combined_cdold'][0]:.1f}"
     m["WresetsNew"] = f"{resets['rrl_combined'][0]:.1f}"
+    m["WresetsSoft"] = f"{resets['rrl_combined_cdsoft'][0]:.1f}"
+    mres = load("gate_m_replay", "stationary")["change_detector_resets"]
+    m["MresetsNew"] = f"{mres['rrl_combined'][0]:.1f}"
+    m["MresetsSoft"] = f"{mres['rrl_combined_cdsoft'][0]:.1f}"
     fixed = "rrl_combined_ctx_verified_fixed"
     m["MspotFixed"] = pct(spot["overall"][fixed][0])
     d = diff("gate_m_replay", "spot_check", f"rrl_combined_ctx_verified_vs_{fixed}")
@@ -302,10 +325,134 @@ def numbers():
     m["TrustWorse"] = str(sum(c["ci95"][1] < 0 for c in tr))
     m["TrustMin"] = f"{min(c['mean_diff'] for c in tr) * 100:+.1f}"
     m["TrustMax"] = f"{max(c['mean_diff'] for c in tr) * 100:+.1f}"
+    holm = holm_reject([c["t_test_p"] for c in tr])
+    m["TrustHolmBetter"] = str(sum(r and c["mean_diff"] > 0 for r, c in zip(holm, tr)))
+    m["TrustHolmWorse"] = str(sum(r and c["mean_diff"] < 0 for r, c in zip(holm, tr)))
     m["TrustMaxAbs"] = f"{max(abs(c['mean_diff']) for c in tr) * 100:.1f}"
+
+    def ov(stem, sc, pol):
+        return load(stem, sc)["overall"][pol][0] * 100
+
+    def ho(stem, sc, pol):
+        return load(stem, sc)["heldout"]["pass_rate"][pol][0] * 100
+
+    def span(xs):
+        return f"{min(xs):.1f}--{max(xs):.1f}"
+
+    full, robust, mem = "rrl_combined_ctx_verified", "query_memory_robust", "query_memory"
+    m["MspotMemory"] = f"{ov('gate_m_replay', 'spot_check', mem):.1f}"
+    for key, pol in (("RRL", full), ("Fixed", fixed), ("Memory", mem), ("Robust", robust)):
+        m[f"MspotHeld{key}"] = f"{ho('gate_m_replay', 'spot_check', pol):.1f}"
+    m["MspotPoisonFixed"] = pct(spot["poisoned_choice_rate"][fixed])
+    poisoned_spot = [
+        ("gate_m_replay", "spot_check"),
+        ("gate_m_replay", "update_spot_check"),
+        ("gate_m_replay", "defect_spot_check"),
+        ("gate_w", "spot_check"),
+        ("gate_w", "redesign_spot_check"),
+    ]
+    m["TrustPoisonRange"] = span([ov(st, sc, fixed) - ov(st, sc, full) for st, sc in poisoned_spot])
+    m["TrustSame"] = str(len(tr) - int(m["TrustBetter"]) - int(m["TrustWorse"]))
+    m["SpotVsRobustRange"] = span(
+        [ov(st, sc, full) - ov(st, sc, robust) for st, sc in poisoned_spot[:2] + poisoned_spot[3:]]
+    )
+    m["WverLead"] = span(
+        [ov("gate_w", sc, robust) - ov("gate_w", sc, full) for sc in ("stationary", "redesign")]
+    )
+    m["CleanVerLead"] = span(
+        [
+            ov("gate_m_replay_clean", sc, robust) - ov("gate_m_replay_clean", sc, full)
+            for sc in ("stationary", "update")
+        ]
+    )
+    m["CleanSpotLead"] = span(
+        [
+            ov("gate_m_replay_clean", sc, robust) - ov("gate_m_replay_clean", sc, full)
+            for sc in ("spot_check", "update_spot_check")
+        ]
+    )
+    m["GdriftGlobalLag"] = (
+        f"{ov('gate_g_hard', 'drift', 'memrl_q') - ov('gate_g_hard', 'drift', 'rrl_combined'):.1f}"
+    )
+    m["MdefSpotResets"] = (
+        f"{load('gate_m_replay', 'defect_spot_check')['change_detector_resets'][full][0]:.1f}"
+    )
+    # verified-outcome detector vs the soft-outcome z-test (RRL global), every scenario
+    soft_better = soft_worse = n_cd = 0
+    for f_ in sorted(os.listdir(RES)):
+        if not (f_.startswith("gate_") and f_.endswith(".json")):
+            continue
+        with open(os.path.join(RES, f_)) as fh:
+            c = (
+                json.load(fh)
+                .get("comparisons", {})
+                .get("overall", {})
+                .get("rrl_combined_cdsoft_vs_rrl_combined")
+            )
+        if c is None:
+            continue
+        n_cd += 1
+        soft_better += c["ci95"][0] > 0
+        soft_worse += c["ci95"][1] < 0
+    m["CdN"], m["CdVerBetter"], m["CdSoftBetter"] = str(n_cd), str(soft_worse), str(soft_better)
+    # Gate T: RRL full against MemRL-style and per-context memory
+    t_cells = [
+        (st, sc)
+        for st in ("gate_t_toolbench", "gate_t_toollens")
+        for sc in (
+            "stationary",
+            "sparse_verifier",
+            "sycophantic",
+            "fooled",
+            "drift",
+            "drift_fooled",
+        )
+    ]
+    m["TsycoMemrlLead"] = span(
+        [
+            ov(st, "sycophantic", "memrl_q") - ov(st, "sycophantic", full)
+            for st in ("gate_t_toolbench", "gate_t_toollens")
+        ]
+    )
+    m["TBsparseMemrlLead"] = (
+        f"{ov('gate_t_toolbench', 'sparse_verifier', 'memrl_q') - ov('gate_t_toolbench', 'sparse_verifier', full):.1f}"
+    )
+    m["TLrrlLead"] = span(
+        [
+            ov("gate_t_toollens", sc, full) - ov("gate_t_toollens", sc, "memrl_q")
+            for sc in ("stationary", "fooled")
+        ]
+    )
+    m["TqmRange"] = span(
+        [ov(st, sc, p_) - ov(st, sc, mem) for st, sc in t_cells for p_ in (full, "memrl_q")]
+    )
+    m["TeTenWins"] = str(
+        sum(ov(st, sc, "rrl_combined_e10") >= ov(st, sc, "memrl_q") - 0.5 for st, sc in t_cells)
+    )
+    m["TcellsN"] = str(len(t_cells))
+    e_cells = [
+        (st, sc)
+        for st in ("gate_t_toolbench", "gate_t_toollens", "gate_g_hard")
+        for sc in (
+            "stationary",
+            "sparse_verifier",
+            "sycophantic",
+            "fooled",
+            "drift",
+            "drift_fooled",
+            "drift_sycophantic",
+        )
+    ]
+    e_cmp = [
+        load(st, sc)["comparisons"]["overall"]["rrl_combined_e10_vs_rrl_combined"]
+        for st, sc in e_cells
+    ]
+    m["ETenBetter"] = str(sum(c["ci95"][0] > 0 for c in e_cmp))
+    m["ETenWorse"] = str(sum(c["ci95"][1] < 0 for c in e_cmp))
+    m["ETenN"] = str(len(e_cmp))
     with open(os.path.join(OUT, "numbers.tex"), "w") as f:
         for k, v in m.items():
-            f.write(f"\\newcommand{{\\{k}}}{{{v}}}\n")
+            f.write(f"\\newcommand{{\\{k}}}{{{minus(v)}}}\n")
 
 
 def main():
@@ -333,7 +480,7 @@ def main():
     ]
     table(
         "gate_m",
-        "Gate M: tool selection over live MCP servers with a poisoned server "
+        "Gate M: tool selection over local MCP servers with a poisoned server "
         "(replay of recorded MCP responses, 30 seeds). Best non-oracle result per column in bold.",
         "tab:gatem",
         "gate_m_replay",
@@ -386,6 +533,7 @@ def main():
         "rrl_combined_globalrel",
         "rrl_combined_nocd",
         "rrl_combined_cdold",
+        "rrl_combined_cdsoft",
         "rrl_combined_e0",
         "rrl_combined_e10",
         "rrl_combined_conf",
@@ -397,7 +545,7 @@ def main():
     table(
         "ablation_m",
         "Ablations on Gate M (overall / held-out success, \\%). Each row changes one "
-        "component of RRL (global); the last two rows add per-context counters and verified memory.",
+        "component of RRL (global); the last three rows add per-context counters, then verified memory, then swap learned trust for the fixed rule.",
         "tab:ablation",
         "gate_m_replay",
         ["stationary", "spot_check", "update", "update_spot_check"],
@@ -422,6 +570,7 @@ def main():
         "gate_m_replay_clean",
         ["defect", "defect_spot_check"],
         mcp_pol,
+        env="table",
     )
     live_table()
     numbers()

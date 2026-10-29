@@ -119,7 +119,8 @@ ABLATIONS = [
     "rrl_combined_globalrel",  # source reliability without per-document rates
     "rrl_combined_nocd",  # no change detection
     "rrl_combined_cdlong",  # change detection also resets the long-term counters
-    "rrl_combined_cdold",  # the original detector: window 4, fixed 0.6 threshold
+    "rrl_combined_cdold",  # the original detector: window 4, fixed 0.6 threshold, soft outcomes
+    "rrl_combined_cdsoft",  # z-test on the soft learning targets instead of verified outcomes
     "rrl_combined_conf",  # confidence-gated exploration, without per-context counters
     "rrl_combined_ctx_conf",  # per-context counters + confidence-gated exploration
     "rrl_combined_e10",  # exploration weight 0.10 (the library default)
@@ -530,7 +531,9 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
         if not combined or name == "rrl_combined_nocd":
             detector = None
         elif name == "rrl_combined_cdold":
-            detector = ChangeDetector(window=4, threshold=0.6)
+            detector = ChangeDetector(window=4, threshold=0.6, history="soft")
+        elif name == "rrl_combined_cdsoft":
+            detector = ChangeDetector(history="soft")
         else:
             detector = ChangeDetector(reset_long_term=name == "rrl_combined_cdlong")
         # rrl_combined_ctx keeps counters per request (shrunk toward each tool's global ones);

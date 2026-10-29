@@ -5,7 +5,7 @@ Feedback**
 
 **Draft:** [`paper/main.tex`](paper/main.tex) (PDF: `paper/main.pdf`). Every table and quoted
 number is generated from `sim/results/` by `paper/make_tables.py`; rebuild with
-`python3 paper/make_tables.py && python3 paper/make_figure.py && cd paper && tectonic main.tex`. The author block is a
+`python3 paper/make_tables.py && python3 paper/site_stats.py && python3 paper/make_figure.py && cd paper && tectonic main.tex`. The author block is a
 placeholder.
 
 This file tracks the paper built on this repository: the claim, what the evidence supports today,
@@ -33,11 +33,20 @@ after earning trust.
 
 The first draft claimed learned per-tool source trust (two-coin Dawid–Skene, `rrl/reliability.py`)
 as the main mechanism. A controlled ablation (`rrl_combined_ctx_verified_fixed`: the same layer
-with the fixed feedback rule) showed it differs from a fixed discount by −3.4 to +3.2 points across
-23 scenarios with unverified feedback, and is slightly *worse* in the case it was built for (Gate M
-with the poisoned server under spot checks). The paper now reports this as a negative result and
+with the fixed feedback rule) showed it differs from a fixed discount by −3.2 to +2.9 points across
+23 scenarios with unverified feedback, and is slightly *worse* in the case it was built for (all
+five spot-check scenarios with the poisoned server, Gates M and W). The paper now reports this as a negative result and
 keeps the pre-specified configuration as "RRL full". A staged-defection scenario (TrustShift-style)
 was added to Gate M; it erases RRL's advantage.
+
+## Fixes after the second review (2026-10-29)
+
+Two implementation issues found by an external review were confirmed and fixed, and every gate
+was re-run: (A) an always-yes feedback source could get a positive weight under few, unbalanced
+audits; (B) the change detector applied a proportion test to soft outcomes. The detector now
+tests verified 0/1 outcomes only. The paper also adds a shop-level bootstrap for the primary
+comparison (`paper/site_stats.py`), Holm-corrected counts for the learned-trust comparison, a
+statement of what the replay models, and clearer scope for the live MCP check.
 
 ## Novelty
 
@@ -78,10 +87,13 @@ verification, staged defection) and an honest map of where simpler methods win.
 | 1 | Run MemRL's official implementation under the same pools, verifier budget and splits | To do |
 | 1b | Compare against **RATED** (code public, EcoAgent benchmark) and an **ESA**-style audit-trust aggregator — the two closest methods | To do |
 | 2 | Evaluate on MCPTox and MCPEvol-Bench (unmodified results reported separately from adapted ones), with Tool-Guard as a security baseline | To do |
-| 3 | A robust per-context memory baseline that survives transient failures | **Done** (`query_memory_robust`): beats RRL by 8–21 points when every call is verified; with 20% spot checks it is fooled and RRL beats it by 20–28 |
+| 3 | A robust per-context memory baseline that survives transient failures | **Done** (`query_memory_robust`): beats RRL by 9–17 points when every call is verified; with 20% spot checks it is fooled and RRL beats it by 19–27 |
 | 4 | Source-trust validation: randomized vs. biased audits, deception concentrated on single tools, correlated sources; report calibration and false reputation updates | To do |
 | 5 | Change detection: recovery delay, false resets under stable conditions, gradual vs. abrupt change, against a fast-forgetting baseline | Partly (resets reported; costs 2–3 points without change; no help against staged defection; delay and gradual drift to do) |
-| 5b | Staged defection (TrustShift): a defence, e.g. change detection on a tool's agreement with the verifier | Scenario added; no defence yet |
+| 5b | Staged defection (TrustShift): a defence — version-aware memory, periodic audits of trusted tools, a maximum trust lifetime — measured for recovery time, false resets and verification cost | Scenario added; change detection now tests verified outcomes but fires too rarely at 20% verification; no defence yet |
+| 9 | Fix the two implementation issues from the second review (always-yes source weight; proportion test on soft outcomes) and re-run | **Done** |
+| 10 | Uncertainty beyond seeds (shop/request-level), Holm-corrected counts for exploratory comparisons | Partly: shop-level bootstrap for the primary Gate M comparison; Holm for learned trust |
+| 11 | Compress to the target venue's page limit (ACL: 8 pages + references) and move extended tables to an appendix | To do |
 | 6 | Verify every citation | **Done** for all arXiv identifiers; venue details for non-arXiv works to add |
 | 7 | Separate benchmark weights (exploration 0.30) from the library default (0.10) in the text | Documented in RESULTS.md; report both in the paper |
 | 8 | Publish an archived, versioned release with the exact code, outcome records and tables | To do (see below) |

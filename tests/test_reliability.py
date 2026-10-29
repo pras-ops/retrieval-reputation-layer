@@ -28,12 +28,30 @@ class TestSourceReliability(unittest.TestCase):
         for i in range(100):
             truth = 0.0 if i % 10 == 0 else 1.0
             rel.observe(OutcomeSignals(s_gt=truth, s_behave=1.0, s_judge=truth))
-        # Only the Beta(1, 1) smoothing keeps it off exactly zero.
-        self.assertLess(abs(rel.llr("s_behave", True)), 0.1)
+        self.assertEqual(rel.llr("s_behave", True), 0.0)
         self.assertGreater(rel.llr("s_judge", True), 1.0)
         self.assertLess(rel.llr("s_judge", False), -1.0)
-        # Its "yes" barely moves the outcome from the 90% base rate.
-        self.assertLess(rel.combine(OutcomeSignals(s_behave=1.0)), 0.92)
+        # Its "yes" alone is no evidence, so the step is not learned from.
+        self.assertIsNone(rel.combine(OutcomeSignals(s_behave=1.0)))
+
+    def test_constant_sources_carry_no_weight_with_few_and_unbalanced_audits(self):
+        # 9 verified successes and 1 failure: a Beta(1, 1) prior centred on 0.5 would give an
+        # always-yes source spec = 1/3 and a positive vote.
+        for succ, fail in ((9, 1), (1, 9), (5, 5), (1, 1), (30, 1)):
+            for says in (1.0, 0.0):
+                rel = SourceReliability()
+                for truth in [1.0] * succ + [0.0] * fail:
+                    rel.observe(OutcomeSignals(s_gt=truth, s_behave=says), ["t"])
+                for doc in (None, "t"):
+                    for vote in (True, False):
+                        self.assertEqual(rel.llr("s_behave", vote, doc), 0.0, (succ, fail, says))
+
+    def test_informative_source_still_counts_with_few_audits(self):
+        rel = SourceReliability()
+        for truth in [1.0] * 9 + [0.0]:
+            rel.observe(OutcomeSignals(s_gt=truth, s_judge=truth))
+        self.assertGreater(rel.llr("s_judge", True), 0.0)
+        self.assertLess(rel.llr("s_judge", False), 0.0)
 
     def test_learns_to_ignore_sycophantic_source(self):
         rel = SourceReliability()
@@ -74,12 +92,12 @@ class TestSourceReliability(unittest.TestCase):
 class TestChangeDetector(unittest.TestCase):
     def test_no_change_on_stable_history(self):
         c = Candidate(id="d", content="", recent_outcomes=[1.0] * 8)
-        self.assertFalse(ChangeDetector(window=4).detect(c))
+        self.assertFalse(ChangeDetector(window=4, history="soft").detect(c))
 
     def test_resets_on_shift(self):
         c = Candidate(id="d", content="", alpha=9.0, beta=1.0, A=5.0, B=1.0)
         c.recent_outcomes = [1.0] * 4 + [0.0] * 4
-        det = ChangeDetector(window=4)
+        det = ChangeDetector(window=4, history="soft")
         self.assertTrue(det.check(c))
         self.assertEqual((c.alpha, c.beta), (1.0, 5.0))
         self.assertEqual((c.A, c.B), (5.0, 1.0))  # long-term counters kept by default
@@ -89,13 +107,13 @@ class TestChangeDetector(unittest.TestCase):
     def test_optional_long_term_reset(self):
         c = Candidate(id="d", content="", A=5.0, B=1.0)
         c.recent_outcomes = [1.0] * 4 + [0.0] * 4
-        ChangeDetector(window=4, reset_long_term=True).check(c)
+        ChangeDetector(window=4, reset_long_term=True, history="soft").check(c)
         self.assertEqual((c.A, c.B), (1.0, 2.0))
 
     def test_threshold_is_quantized_by_window(self):
         # Window means move in steps of 0.25: a 0.5 shift does not reach 0.6.
         c = Candidate(id="d", content="", recent_outcomes=[1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0])
-        self.assertFalse(ChangeDetector(window=4, threshold=0.6).detect(c))
+        self.assertFalse(ChangeDetector(window=4, threshold=0.6, history="soft").detect(c))
 
 
 class TestStatisticalChangeDetector(unittest.TestCase):
@@ -104,7 +122,8 @@ class TestStatisticalChangeDetector(unittest.TestCase):
         import random
 
         rng = random.Random(0)
-        fixed, test = ChangeDetector(window=4, threshold=0.6), ChangeDetector()
+        fixed = ChangeDetector(window=4, threshold=0.6, history="soft")
+        test = ChangeDetector(history="soft")
         for _ in range(2000):
             c = Candidate(id="d", content="")
             c.recent_outcomes = [float(rng.random() < 0.5) for _ in range(16)]
@@ -117,7 +136,7 @@ class TestStatisticalChangeDetector(unittest.TestCase):
     def test_detects_clear_flip(self):
         c = Candidate(id="d", content="")
         c.recent_outcomes = [1.0] * 8 + [0.0] * 8
-        self.assertTrue(ChangeDetector().check(c))
+        self.assertTrue(ChangeDetector(history="soft").check(c))
 
     def test_checks_cluster_counters(self):
         c = Candidate(id="d", content="")
@@ -125,10 +144,59 @@ class TestStatisticalChangeDetector(unittest.TestCase):
         c.cluster_counters = {
             "site": {"alpha": 9.0, "beta": 1.0, "recent_outcomes": [1.0] * 8 + [0.0] * 8}
         }
-        det = ChangeDetector()
+        det = ChangeDetector(history="soft")
         self.assertTrue(det.check(c, "site"))
         self.assertEqual(c.cluster_counters["site"]["beta"], 9.0)
         self.assertFalse(det.check(c))
+
+
+class TestVerifiedChangeDetector(unittest.TestCase):
+    def test_tests_verified_outcomes_not_soft_targets(self):
+        # Soft targets look stable (unverified successes at 0.81), verified outcomes flip.
+        c = Candidate(id="d", content="", alpha=9.0, beta=1.0)
+        c.recent_outcomes = [0.81] * 16
+        det = ChangeDetector()
+        for y in [1.0] * 8 + [0.0] * 8:
+            det.observe("d", y > 0.5)
+        self.assertTrue(det.check(c))
+        self.assertEqual((c.alpha, c.beta), (1.0, 9.0))
+        self.assertEqual(c.recent_outcomes, [0.81] * 16)  # soft history left alone
+        self.assertFalse(det.check(c))  # the change is not detected twice
+
+    def test_no_verified_history_no_reset(self):
+        c = Candidate(id="d", content="", recent_outcomes=[1.0] * 8 + [0.0] * 8)
+        self.assertFalse(ChangeDetector().check(c))
+
+    def test_false_resets_on_stationary_verified_outcomes(self):
+        # Testing after every verified outcome with overlapping windows: count false alarms.
+        import random
+
+        rng = random.Random(1)
+        det = ChangeDetector()
+        for tool in range(8):
+            c = Candidate(id=f"t{tool}", content="")
+            for _ in range(500):
+                det.observe(c.id, rng.random() < 0.7)
+                det.check(c)
+        # 4,000 tests; repeated testing inflates the 1% level, but resets stay rare.
+        self.assertLess(det.resets, 40)
+
+    def test_layer_detects_defection_hidden_by_unverified_success(self):
+        store = CandidateStore()
+        det = ChangeDetector()
+        layer = ReputationLayer(store, gamma=1.0, change_detector=det)
+        for step in range(200):
+            res = layer.rescore({"d": 1.0}, top_k=1, explore=False, now=float(step))
+            verified = step % 5 == 0
+            truth = 1.0 if step < 100 else 0.0
+            layer.record_feedback(
+                res.response_id,
+                s_gt=truth if verified else None,
+                s_behave=1.0,
+                s_judge=1.0,
+                now=float(step),
+            )
+        self.assertGreaterEqual(det.resets, 1)
 
 
 class TestClusterShrinkage(unittest.TestCase):

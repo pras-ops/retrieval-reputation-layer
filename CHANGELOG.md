@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Source reliability gave an always-yes source a positive vote** when verified outcomes were
+  few and unbalanced (a Beta(1, 1) prior centred on 0.5 gives spec ≈ 1/3 after one verified
+  failure). The prior is now centred on an uninformative source (its own overall "yes" rate), so
+  a constant source carries exactly zero weight; probabilities are clamped before taking logs.
+- **Change detection ran a two-proportion z-test on soft learning targets** (e.g. 0.81 for an
+  unverified success). `ChangeDetector` now records the verifier's 0/1 outcomes (`observe()`)
+  and tests those by default (`history="verified"`); `history="soft"` keeps the old behaviour
+  and is the new ablation `rrl_combined_cdsoft`. With a context, `ReputationLayer` now tests the
+  tool's global counters as well as the context's, as documented.
+
 ### Added
 - **Fixed-rule ablation** `rrl_combined_ctx_verified_fixed` (RRL + per-context + verified memory
   with the fixed feedback rule instead of learned source reliability), with paired comparisons
@@ -16,7 +27,7 @@ All notable changes to this project are documented here. The format is based on
 - **Paper draft** (`paper/`): `main.tex` ("Trust, Not Just Relevance"), `references.bib`
   built from arXiv metadata, and `make_tables.py`, which writes every results table and every
   number quoted in the text from `sim/results/*.json`. Build with
-  `python3 paper/make_tables.py && python3 paper/make_figure.py && cd paper && tectonic main.tex`.
+  `python3 paper/make_tables.py && python3 paper/site_stats.py && python3 paper/make_figure.py && cd paper && tectonic main.tex`.
   Reframed after review: learned source trust is reported as a negative result.
 - **Gate F** (`sim/run_gate_matrix.py`): a leak-free, fully replayable MBPP benchmark. The
   corpus never contains a query's own solution; every (query, candidate) outcome is

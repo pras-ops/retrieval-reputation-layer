@@ -10,10 +10,12 @@
 \usepackage{xcolor}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{float}
 \usepackage[colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
 
 % Every number quoted in the text comes from sim/results via paper/make_tables.py.
 \input{tables/numbers}
+\input{tables/site_stats}
 \emergencystretch=1em
 
 \title{When Tools Over-Report Success: Verifier-Anchored\\
@@ -34,17 +36,21 @@ adopts exactly the tool that over-reports. We study online tool selection under 
 verification and describe RRL, a training-free selection layer built from simple parts:
 relevance plus Beta reputation, unverified success discounted rather than trusted, per-context
 counters shrunk toward each tool's global reputation, and a per-context memory that only verified
-outcomes can set. On six benchmarks, including live MCP servers with a poisoned server, real tool
-descriptions from ToolRet and executable web-scraping extractors, a cross-encoder reranker and an
-LLM choosing from the tool list pick the poisoned tool almost every time and solve at most
-\MupLLM\% of requests. With 20\% of calls verified, a MemRL-style learner solves \MspotMemRL\%,
-a robust per-context memory \MspotRobust\%, and RRL \MspotRRL\% (\MspotVsRobust{} points over the
-memory, 95\% CI \MspotVsRobustCI). We also test a learned, per-tool model of how far to trust each
-feedback source, anchored to the verified calls; it is not what drives the gains, differing from
-a fixed discount by at most \TrustMaxAbs{} points in either direction, and it is clearly better only than
-learning one trust level per source. RRL loses where its assumptions fail: to a per-context memory when every
-call is verified and to a fast-forgetting learner under abrupt API changes, and it offers no
-protection against a tool that behaves honestly until trusted and then lies. We release the
+outcomes can set. On six benchmarks, including local MCP servers with a poisoned server
+(recorded calls, replayed, with a three-seed live check), real tool descriptions from ToolRet and
+executable web-scraping extractors, a cross-encoder reranker and an LLM choosing from the tool
+list pick the poisoned tool almost every time and solve at most \MupLLM\% of requests. With 20\% of
+calls verified, a MemRL-style learner solves \MspotMemRL\% and a robust per-context memory
+\MspotRobust\%, both misled by the poisoned tool's own reports; RRL solves \MspotRRL\% with learned
+source trust and \MspotFixed\% with a fixed discount (\MspotVsRobust{} points over the robust
+memory for the former, 95\% CI \MspotVsRobustCI). A plain per-context memory matches RRL overall
+(\MspotMemory\%) but not on contexts it has not seen (\MspotHeldMemory\% against \MspotHeldRRL\%). The
+learned, per-tool model of how far to trust each feedback source is not what drives the gains: it
+differs from the fixed discount by at most \TrustMaxAbs{} points and is slightly worse in every
+spot-check scenario with the poisoned server on Gates M and W. RRL loses where its assumptions fail:
+to a per-context memory when every call is verified and to a fast-forgetting learner under
+abrupt API changes, and it offers little protection against a tool that behaves honestly until
+trusted and then lies. We release the
 code, recorded outcomes and replay harness.
 \end{abstract}
 
@@ -74,26 +80,35 @@ success then looks like the best tool, and a learner that trusts the reports loc
 Our starting point was web scraping, where the same problem appears in a simple form: which
 extractor works for which site, when extractors report success on pages they parsed wrongly and
 sites redesign. We study the general problem, \emph{online tool selection when tools may
-mislead and only some calls are verified}, and ask what a selection layer needs in order not to
-be fooled. Our contributions:
+mislead and only some calls are verified}, and ask what a selection layer needs in order to resist
+tools that over-report. Our contributions:
 
 \begin{enumerate}
-  \item \textbf{A simple, training-free selection layer that is not fooled.} RRL combines
+  \item \textbf{A simple, training-free selection layer that resists over-reported success.} RRL combines
   relevance with Beta reputation \citep{josang2002} and Thompson exploration
   \citep{thompson1933}, discounts unverified success, shrinks per-context counters toward each
   tool's global reputation so that new contexts start from what is known, and keeps a
-  per-context memory that only the verifier can set or clear. Under spot checks it avoids a
-  poisoned tool that a reranker, an LLM and two learning baselines all adopt.
+  per-context memory that only the verifier can set or clear. Under spot checks it chooses a
+  poisoned tool on \MspotPoisonRRL\% of steps, where a reranker, an LLM and two learning baselines
+  adopt it.
   \item \textbf{A negative result on learned feedback trust.} A two-coin Dawid--Skene
   \citep{dawid1979} model of each source's sensitivity and specificity, estimated per tool
   against the verified calls (the idea behind audit-based trust in ESA \citep{esa}), differs from
-  a fixed discount of unverified success by a few points at most, in both directions, and is
-  slightly worse in the case it was designed for. Learning one trust level per source is
-  harmful, because the deceptive tool's report is informative on average.
+  a fixed discount of unverified success by at most \TrustMaxAbs{} points, and is slightly worse in
+  all five spot-check scenarios with the poisoned server on Gates M and W, the case it was
+  designed for. Learning one trust level per source is harmful, because the deceptive tool's
+  report is informative on average.
   \item \textbf{A reproducible evaluation that maps where this works and where it fails}: six
-  benchmarks, including live MCP servers with a poisoned server and an LLM choosing from the tool
-  list, a staged-defection scenario, 30 paired seeds and ablations.
+  benchmarks, including local MCP servers with a poisoned server and an LLM choosing from the tool
+  list, a staged-defection scenario, 30 paired seeds, a shop-level bootstrap and ablations.
 \end{enumerate}
+
+\paragraph{When it applies.} The approach assumes that contexts or tools recur, that a
+verifier can check some calls, and that tools are stable enough for past outcomes to predict
+future ones. Its results are conditional on those assumptions: it reduces reliance on an
+over-reporting tool and transfers to unseen contexts, but loses to a per-context memory when
+every call is verified, to a fast-forgetting learner under abrupt change, and a remembered
+success can outlive a tool's validity when the tool changes without the verifier noticing.
 
 \paragraph{Relation to the closest work.} RATED \citep{rated} learns which tools work from
 execution feedback but assumes the feedback is truthful. ESA \citep{esa} learns per-source,
@@ -165,8 +180,13 @@ unverified failure.
 
 \emph{Learned source trust.} For source $k$ and tool $d$, RRL counts over verified calls how
 often $k$ said ``success'' when the call succeeded (sensitivity $\mathrm{se}_{k,d}$) and
-``failure'' when it failed (specificity $\mathrm{sp}_{k,d}$), with a Beta(1,1) prior and the
-per-tool rates shrunk toward the source's global rates with prior strength 4. Each signal
+``failure'' when it failed (specificity $\mathrm{sp}_{k,d}$). The prior is centred on an
+uninformative source: both conditional ``success'' rates start at the source's own overall
+rate of saying ``success'' (prior strength 2), so a source whose answer does not depend on the
+outcome has $\mathrm{se}+\mathrm{sp}=1$ and no weight however few or unbalanced the verified
+calls are. (A Beta(1,1) prior centred on 0.5, which an earlier version used, gives an
+always-yes source $\mathrm{sp}\approx1/3$ after a single verified failure and so a positive
+vote.) Per-tool rates are shrunk toward the source's global rates with prior strength 4. Each signal
 contributes a log-likelihood ratio
 \begin{equation}
   \ell_k = \begin{cases}
@@ -191,10 +211,15 @@ $\alpha\mathrel{+}=\omega \hat y$, $\beta\mathrel{+}=\omega(1-\hat y)$, with wei
 $\omega=2|\hat y-\tfrac12|$ so that uncertain outcomes move the counters little; the long-term
 counters receive a quarter of the update.
 
-\paragraph{Change detection.} For each tool (and each tool--context pair) RRL compares the
-success rates $\hat p_1,\hat p_2$ of the last two windows of $w=8$ outcomes with a two-proportion
+\paragraph{Change detection.} For each tool, and each tool--context pair, RRL keeps the
+verifier's own 0/1 outcomes and, after each verified call, compares the success rates
+$\hat p_1,\hat p_2$ of the last two windows of $w=8$ verified outcomes with a two-proportion
 z-test at $\alpha=0.01$, $z=|\hat p_2-\hat p_1|/\sqrt{2\bar p(1-\bar p)/w}$. On detection the
-short-term counters are rebuilt from the most recent window only. This replaces a fixed threshold
+short-term counters are rebuilt from the most recent window only. Testing verified outcomes
+matters twice: the proportion test assumes binary observations, while the learning targets
+$\hat y$ are soft; and a tool whose unverified reports stay positive while its verified calls
+fail is still detected. Testing after every verified call with overlapping windows inflates
+the nominal 1\% level, so we report the resets observed in stable conditions. This replaces a fixed threshold
 on $|\hat p_2-\hat p_1|$, which produced many false resets (Section~\ref{sec:ablation}); it is a
 simple instance of adaptive windowing \citep{bifet2007} and related to sliding-window and
 discounted bandits \citep{garivier,dts}.
@@ -216,7 +241,7 @@ discounted bandits \citep{garivier,dts}.
 \Else \State $\hat y\gets$ fixed discount, or $\sigma(\operatorname{logit}\pi+\sum_k\ell_k)$ with learned trust (Eqs.~3--4)
 \EndIf
 \State update $d$'s global and context counters with $\hat y$, weight $\omega=2|\hat y-\tfrac12|$
-\State run the change test on $d$ (and on $d$ in $c$); on detection rebuild counters from the last window
+\State if verified, run the change test on $d$'s verified outcomes (and on $d$ in $c$); on detection rebuild counters
 \end{algorithmic}
 \end{algorithm}
 
@@ -227,6 +252,19 @@ pool we record whether the tool works, so any policy can be evaluated on the sam
 \citep{replay}. Seeds vary the request order, feedback noise, flaky calls and exploration; we run
 30 seeds and pair every comparison over the same seeds (95\% CIs from a paired t-test; Wilcoxon
 tests agree). A held-out set of contexts appears only in a final block, to measure transfer.
+
+\paragraph{What the replay does and does not model.} A policy sees only the feedback of the
+tool it chose, and the verifier's result only on the calls drawn for verification. Transient
+failures and timeouts are drawn per step from fixed rates; tool updates and site redesigns are
+a second recorded phase; defection rewrites one tool's outcomes after a fixed step. Tools are
+otherwise stateless: a call never changes what later calls return.
+
+\paragraph{Statistics.} The confirmatory comparison is RRL full against the robust per-context
+memory under spot checks on Gates M and W. Seed-level intervals vary only request order,
+noise and exploration over the same contexts, so for Gate M we also bootstrap over the 30 shops
+(Section~\ref{sec:results}). Ablations and the remaining comparisons are exploratory; where we
+count significant results across many scenarios we report how many survive a Holm
+correction.
 
 \paragraph{Gate M: live MCP servers.} Four local MCP servers over stdio expose eight extractor
 tools that fetch pages from a local shop site and return title, price and SKU: CSS extractors, a
@@ -240,8 +278,9 @@ as in MCPEvol-Bench's mutations \citep{mcpevol}. In the \emph{defection} scenari
 TrustShift attacks \citep{trustshift}, the most useful honest extractor (\texttt{css\_woo}) starts
 returning well-formed wrong results halfway through the seen shops while still reporting
 success. Outcomes were recorded from 2,280 live MCP calls and replayed with 20\% timeouts on the
-flaky server and 2\% transient failures on every tool. We also run every policy with real MCP
-calls on every step. The \emph{LLM picks} baseline gives Gemini 2.5 Flash the live tool list and
+flaky server and 2\% transient failures on every tool; all Gate M tables are replays. As a
+check we also run every policy with real MCP calls on every step, for three seeds. The servers
+and the website are local; no third-party MCP service is involved. The \emph{LLM picks} baseline gives Gemini 2.5 Flash the live tool list and
 lets it plan its calls, as agents do today.
 
 \paragraph{Gate W: web-scraping extractors.} 30 generated shops (6 held out) and the same eight
@@ -307,7 +346,7 @@ in the registry, the static reranker picks it on every step and solves none of t
 (Table~\ref{tab:gatem}). Gemini choosing from the tool list does little better: it picks the
 poisoned tool on \MverPoisonLLM\% of steps, solves \MverLLM--\MupLLM\% of requests, and plans the
 injected \texttt{send\_report} call on \MverSendReport--\MupSendReport\% of steps. Every learning
-method recovers: with every call verified RRL full solves \MverRRL\% and picks the poisoned tool
+method does better: with every call verified RRL full solves \MverRRL\% and picks the poisoned tool
 on \MverPoisonRRL\% of steps.
 
 \paragraph{With spot checks, learners that take reports at face value are fooled.} When only
@@ -316,18 +355,27 @@ MemRL-style trusts them, picks the poisoned tool on \MspotPoisonMemRL\% of steps
 \MspotMemRL\%. The robust per-context memory, built to survive isolated failures, holds on to the
 poisoned tool on the strength of the same reports (\MspotPoisonRobust\% poisoned picks,
 \MspotRobust\% solved). RRL, which discounts unverified success and lets only verified outcomes
-lock in a per-context choice, picks it on \MspotPoisonRRL\% of steps and solves \MspotRRL\%:
+lock in a per-context choice, still picks it on \MspotPoisonRRL\% of steps, so its protection is
+partial, and solves \MspotRRL\%:
 \MspotVsRobust{} points over the robust memory (95\% CI \MspotVsRobustCI, better on
-\MspotVsRobustWL{} seeds). Gate W shows the same pattern without the MCP layer (\WspotVsRobust{}
-points; Table~\ref{tab:gatew}). RRL is also far better on held-out contexts, because a new context
+\MspotVsRobustWL{} seeds). Bootstrapping over the 30 shops instead of seeds gives
+\SiteSpotMean{} points per shop (95\% interval \SiteSpotCI), with RRL ahead on \SiteSpotWins{}
+shops. Gate W shows the same pattern without the MCP layer (\WspotVsRobust{} points;
+Table~\ref{tab:gatew}); across the four spot-check scenarios of Gates M and W the margin is
+\SpotVsRobustRange{} points. A plain per-context memory, which abandons a tool after a single
+failure, is not misled in the same way and matches RRL overall (\MspotMemory\%), but on the
+held-out shops it solves \MspotHeldMemory\% against \MspotHeldRRL\% for RRL, because a new context
 starts from each tool's global reputation rather than from the reranker.
 
 \paragraph{When every call is verified, a per-context memory wins.} In the verified regime there
 is nothing to be fooled by, and the robust memory beats RRL full by \MverRobustLead{} points on
-Gate M (95\% CI \MverRobustLeadCI), by 11--16 on Gate W, and by 15--17 on the clean registry
-(Table~\ref{tab:gatemclean}). Without the poisoned server it also wins under spot checks, by
-19--21 points: when no tool over-reports success, the unverified reports are honest and
-trusting them is right. Per-context memory is the right tool when outcomes are trustworthy
+Gate M (95\% CI \MverRobustLeadCI), by \WverLead{} on Gate W, and by \CleanVerLead{} on the clean
+registry (Table~\ref{tab:gatemclean}). At the level of shops the Gate M lead is less certain: the
+memory leads by \SiteVerLead{} points per shop with a 95\% interval that includes zero
+(\SiteVerLeadCI), and RRL full is ahead on \SiteVerWins{} shops, so the memory's advantage comes from
+large wins on the rest. Without the poisoned server
+the memory also wins under spot checks, by \CleanSpotLead{} points: when no tool over-reports
+success, the unverified reports are honest and trusting them is right. Per-context memory is the right tool when outcomes are trustworthy
 and contexts recur; RRL buys robustness to over-reporting and transfer to new contexts at the
 cost of exploration.
 
@@ -340,13 +388,17 @@ cost of exploration.
 RRL's learned source trust was designed to recognise that the poisoned tool's self-report is
 uninformative for that tool. To test whether it is what keeps the poisoned tool out, we replace it
 with the fixed discount and keep everything else. In the \TrustN{} scenarios with unverified
-feedback (Appendix~\ref{app:trust}), the two differ by \TrustMin{} to \TrustMax{} points: learned
-trust is significantly better in \TrustBetter, significantly worse in \TrustWorse, and
-indistinguishable in the rest. It helps a little where the unverified feedback is honest but
-sparse (sparse verifier on Gates T and G, the clean registry on Gate M) and hurts a little in the
-case it was built for: with the poisoned tool under spot checks on Gate M, the fixed rule
-solves \MspotFixed\%, \MspotFixedLead{} points more than RRL full (95\% CI \MspotFixedLeadCI). Learned trust is clearly better only than learning one sensitivity and
-specificity per source, which loses \MspotGlobalRelLoss{} points on Gate M and
+feedback (Appendix~\ref{app:trust}) the two differ by \TrustMin{} to \TrustMax{} points: learned
+trust is significantly better in \TrustBetter, significantly worse in \TrustWorse{} and
+indistinguishable in \TrustSame{} (\TrustHolmBetter{} and \TrustHolmWorse{} after a Holm correction
+across the \TrustN{} tests). It helps a little where the verifier is sparse and the other feedback
+mostly honest (the sparse verifier on Gate T) and is worse in the case it was built for: in all
+five spot-check scenarios with the poisoned tool on Gates M and W the fixed rule is ahead, by
+\TrustPoisonRange{} points (Gate M: \MspotFixed\% against \MspotRRL\%, 95\% CI of the difference
+\MspotFixedLeadCI). We have not isolated the cause; one candidate is that per-tool rates start
+from each source's global rates, which the poisoned tool's constant reports distort until a tool
+has verified calls of its own. Learned trust is clearly better only than learning one sensitivity
+and specificity per source, which loses \MspotGlobalRelLoss{} points on Gate M and
 \WspotGlobalRelLoss{} on Gate W because the deceptive tool's report is informative on average.
 
 So learned trust is not what drives the gains. What does is shared by both variants and missing
@@ -369,14 +421,17 @@ the \MdefOracleDrop{} points the best possible pick loses; it still beats the ro
 (\MdefSpotVsRobust{} points; \MdefSpotRobust\%) but no longer the plain per-context memory
 (\MdefSpotMemory\% against \MdefSpotRRL\%). Without the poisoned server
 (Appendix~\ref{app:defectclean}) the robust memory keeps its lead (\McleanDefSpotRobust\% against
-\McleanDefSpotRRL\%). RRL offers no specific protection: change detection does not help
-(\MdefSpotCd\% with it, \MdefSpotNocd\% without it, for RRL (global)), because it watches discounted
-outcomes that still look like successes, and the fixed discount does not help either
-(\MdefSpotFixed\%). Detecting a change in a tool's agreement with the verifier is the obvious
-next step.
+\McleanDefSpotRRL\%). RRL offers no specific protection. Its change detector tests verified
+outcomes and so can see the defection, but at 20\% verification a tool needs about 80 calls to
+fill two windows of eight verified outcomes, and the detector fires \MdefSpotResets{} times per
+run on average; after a reset the defector's unverified reports keep arriving as successes.
+RRL (global) solves \MdefSpotCd\% with the detector and \MdefSpotNocd\% without it, and the fixed
+discount does not help either (\MdefSpotFixed\%). Version-aware memory, periodic audits of
+trusted tools and a limit on how long a success counts without re-verification are the obvious
+next steps (Section~\ref{sec:limits}).
 
 \paragraph{Live runs agree with the replay.} Table~\ref{tab:live} compares the replay with runs
-that make real MCP calls on every step. RRL full is within about 2 points of its replayed result.
+that make real MCP calls on every step. RRL full is within 1 point of its replayed result.
 Per-context memory does about 6 points better live, because the replay adds 2\% transient
 failures on every tool, the local servers had none outside the flaky one, and that baseline
 abandons a working tool after a single failure.
@@ -387,12 +442,13 @@ abandons a working tool after a single failure.
 takes well under a millisecond in pure Python, negligible next to the tool call itself.
 
 \paragraph{On real tool descriptions RRL matches MemRL-style.} On ToolRet requests
-(Tables~\ref{tab:gatet} and~\ref{tab:gatetl}), RRL and MemRL-style are within a few points of
-each other: MemRL-style is ahead by 3--4 points under the sycophantic judge, RRL full is ahead
-by 2 points on ToolLens with the fooled judge, and with the library's exploration weight RRL
-(global) matches or slightly exceeds MemRL-style in most scenarios. Both beat per-context memory
-by about 5--16 points because requests rarely repeat, and both remain far from the best possible
-pick.
+(Tables~\ref{tab:gatet} and~\ref{tab:gatetl}) RRL and MemRL-style are within a few points of each
+other. MemRL-style is ahead by \TsycoMemrlLead{} points under the sycophantic judge and by
+\TBsparseMemrlLead{} on ToolBench with a sparse verifier; RRL full is ahead by \TLrrlLead{} points on
+ToolLens with a verified or a fooled judge; with the library's exploration weight, RRL (global) is
+ahead of MemRL-style or within half a point in \TeTenWins{} of \TcellsN{} scenarios. Both beat
+per-context memory by \TqmRange{} points because requests rarely repeat, and both remain far from
+the best possible pick.
 
 \input{tables/gate_t_toolbench}
 \input{tables/gate_t_toollens}
@@ -401,8 +457,9 @@ pick.
 (Table~\ref{tab:gateg}), when the library's API changes halfway and feedback is trustworthy,
 MemRL-style's exponential moving average forgets the old documents faster than RRL's change
 detector, which waits for statistical evidence. In the drift scenario RRL (global) trails it by
-9 points and RRL full by \GdriftMemRLLead{}: per-context counters and verified memory keep the
-old documents for questions that recur after the change.
+\GdriftGlobalLag{} points and RRL full by \GdriftMemRLLead{}: per-context counters and verified
+memory cost a few more points by keeping the old documents for questions that recur after the
+change.
 
 \input{tables/gate_g}
 
@@ -421,17 +478,23 @@ Table~\ref{tab:ablation} removes one component at a time on Gate M.
   \item \textbf{Per-context counters and verified memory} supply most of RRL's gain where
   contexts recur: from RRL (global) to RRL full adds \MspotCtxGain{} points under spot checks and
   \MverCtxGain{} with every call verified, verified memory alone \MverVerifiedGain{}. Neither
-  helps on Gate T, where requests rarely repeat, and both hurt under drift on Gate G (above).
-  \item \textbf{Feedback trust.} Learned per-tool trust is within a few points of the fixed
-  discount (Section~\ref{sec:trust}); a single trust level per source is clearly worse.
-  \item \textbf{Change detection} cuts resets in stable conditions from \WresetsOld{} to
-  \WresetsNew{} per run on Gate W compared with the fixed-threshold rule, but it still costs
-  \McdCost{} points on Gate M and \WcdCost{} on Gate W when nothing changes, reacts later to a
-  real change than that rule (Gate G), and does not catch staged defection.
+  helps on Gate T, where requests rarely repeat, and both cost a few points under drift on Gate
+  G (above).
+  \item \textbf{Feedback trust.} Learned per-tool trust is within \TrustMaxAbs{} points of the
+  fixed discount and slightly worse with the poisoned tool under spot checks
+  (Section~\ref{sec:trust}); a single trust level per source is clearly worse.
+  \item \textbf{Change detection.} Testing verified outcomes rather than the soft learning
+  targets, as an earlier version did, is significantly better in \CdVerBetter{} of \CdN{} scenarios
+  and worse in \CdSoftBetter{} (Gate G under drift with a misleading judge). Compared with the
+  original fixed-threshold rule, resets in stable conditions fall from \WresetsOld{} to
+  \WresetsNew{} per run on Gate W, but the detector still costs \McdCost{} points on Gate M and
+  \WcdCost{} on Gate W when nothing changes, reacts later to a real change than that rule (Gate G),
+  and does little against staged defection.
   \item \textbf{Exploration.} A confidence gate that stops exploring once the leader is
   significantly best had no effect: while any tool is untried, the leader cannot be shown best
-  at 95\% confidence. The library default $w_e=0.10$ is better than the benchmark's $0.30$ on
-  Gates T and G; we report both rather than re-tune after seeing the results.
+  at 95\% confidence. The library default $w_e=0.10$ is significantly better than the
+  benchmark's $0.30$ in \ETenBetter{} of \ETenN{} scenarios on Gates T and G and never significantly
+  worse; we report both rather than re-tune after seeing the results.
 \end{itemize}
 
 \section{Related work}
@@ -490,6 +553,13 @@ change. \citet{selfreports} show that self-reports of LLM operators are not veri
   reliability, or with deception concentrated on some contexts, may favour learned trust; we
   assume verified calls are sampled at random, and biased audits or correlated sources are
   untested.
+  \item \textbf{Stale verified memory.} A verified success stays authoritative for a context
+  until a verified failure. Binding memory to a tool's version or interface fingerprint,
+  auditing trusted tools periodically, and limiting how long a success counts without
+  re-verification are natural safeguards; we have not evaluated them, and each needs its
+  recovery time, false resets and verification cost measured.
+  \item \textbf{Statistics.} Our intervals cover seeds and, for the primary comparison, shops;
+  they do not establish that effects carry over to other tool registries.
   \item \textbf{Regime.} RRL loses to a per-context memory when every call is verified and to a
   fast-forgetting learner under abrupt change with trustworthy feedback.
 \end{itemize}
@@ -499,9 +569,10 @@ change. \citet{selfreports} show that self-reports of LLM operators are not veri
 Choosing tools by their descriptions fails as soon as a description lies, and learning from
 outcomes fails as soon as the outcomes lie. In our benchmarks the remedy is simple: discount
 unverified success, let only verified outcomes lock in a choice, and start new contexts from each
-tool's global reputation. That avoids a poisoned tool that a reranker, an LLM and two learning
-baselines adopt when only some calls are checked; a learned model of how far to trust each
-feedback source changes little on top. Where every call can be checked, simpler memories are
+tool's global reputation. That sharply reduces reliance on a poisoned tool that a reranker, an
+LLM and two learning baselines adopt when only some calls are checked; a learned model of how far
+to trust each feedback source adds nothing on top and is slightly worse with the poisoned tool
+under spot checks. Where every call can be checked, simpler memories are
 better, and a tool that defects after earning trust erases the approach's advantage. The open questions are
 how to choose which calls to verify and how to detect defection from a few verified failures.
 
@@ -520,10 +591,11 @@ servers and websites run locally; no third-party service was attacked or scraped
 \bibliography{references}
 
 \appendix
+\clearpage
 \section{Hyperparameters}
 \label{app:hparams}
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
 \begin{tabular}{ll}
@@ -533,10 +605,10 @@ Setting & Value \\
 Score weights $(w_s,w_c,w_p,w_e)$ & $(0.20,0.40,0.10,0.30)$; library default $w_e=0.10$ \\
 Context shrinkage $\kappa$ & 4 \\
 Fixed discount & report capped at 0.75; weights 0.45 report, 0.15 schema/judge \\
-Learned trust & Beta(1, 1) on se, sp; per-tool rates shrunk to global, strength 4 \\
+Learned trust & prior centred on uninformative, strength 2; per-tool shrinkage 4 \\
 Log-likelihood clip & $\pm 4$ \\
 Long-term counter update & $1/4$ of the short-term update \\
-Change test & window $w=8$, two-sided $\alpha=0.01$ \\
+Change test & verified 0/1 outcomes, window $w=8$, two-sided $\alpha=0.01$ \\
 Time decay, $\epsilon$-greedy & none \\
 MemRL-style & $\lambda=0.5$, learning rate 0.3, $Q_0=0.5$ \\
 Robust per-context memory & move on after 2 failures in a row (3 if unverified) \\
@@ -554,6 +626,7 @@ LLM, Gate F & Gemini 2.5 Flash, temperature 0, default thinking \\
 \end{tabular}
 \end{table}
 
+\clearpage
 \section{Learned trust against the fixed discount}
 \label{app:trust}
 

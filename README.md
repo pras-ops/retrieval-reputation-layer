@@ -27,8 +27,8 @@ descriptions or their own success reports: unverified success is discounted, onl
 outcomes can lock in a per-context choice, and new contexts start from each tool's global
 reputation — plus an evaluation, including live MCP servers, of where that helps and where
 simpler methods win. A learned per-tool model of feedback-source trust (`SourceReliability`) is
-included and tested, but it is not what drives the gains: it stays within a few points of the
-fixed discount. See [PAPER.md](PAPER.md).
+included and tested, but it is not what drives the gains: it stays within about 3 points of
+the fixed discount and is slightly worse when a deceptive tool is present. See [PAPER.md](PAPER.md).
 
 > **What it is:** a reputation / usefulness-and-freshness layer for closed-loop retrieval.
 > **What it is not:** a better retriever, or a truth detector. It adds no value where queries
@@ -46,6 +46,9 @@ Both halves are demonstrated. We show a strong cross-encoder reranker **beating*
 one-shot, non-recurring setting (Gate C) — that boundary is stated up front, not hidden. The
 *same* mechanism explains both the wins and the loss, which is the point: this is outcome-aware
 retrieval *under specific conditions*, not a universally superior retriever.
+
+Gates A–E come from the project's earlier document-retrieval study and are not part of the
+paper; the paper ([PAPER.md](PAPER.md)) reports Gates F, G, T, W and M only.
 
 This is a **research/experimental** project built around honest evaluation. See
 [Validation Status](#validation-status) for exactly what is and isn't established.
@@ -299,10 +302,10 @@ All replay offline from committed data, 30 seeds, paired statistics, with ablati
 
 | Gate | What it tests | Headline |
 |---|---|---|
-| **M** — live MCP servers (`sim/run_gate_m.py`) | Real MCP tools over stdio on local servers; a poisoned server with an injected instruction; a mid-run tool update; a flaky server; Gemini picking from the tool list; fully live runs agree with the replay | Reranker and Gemini pick the poisoned tool (0–8% solved); **RRL 43–67%**. With 20% spot checks MemRL-style (3–4%) and a robust per-site memory (22–25%) are fooled; RRL keeps 43–52% and leads on new sites. With every call verified, the robust per-site memory leads by 8–21 points |
-| **T** — tool selection (`sim/run_gate_t.py`) | Real ToolRet requests and tool descriptions; tool updates, poisoned twins, flaky tools, held-out requests | Learning beats the static reranker (≈30% → 41–59%); **RRL and MemRL-style are close** (−2.4 to +4.6 points at exploration 0.10) |
+| **M** — live MCP servers (`sim/run_gate_m.py`) | Real MCP tools over stdio on local servers; a poisoned server with an injected instruction; a mid-run tool update; a flaky server; Gemini picking from the tool list; fully live runs agree with the replay | Reranker and Gemini pick the poisoned tool (0–8% solved); **RRL 43–66%**. With 20% spot checks MemRL-style (3–4%) and a robust per-site memory (22–25%) are fooled; RRL keeps 43–52% and leads on new sites. With every call verified, the robust per-site memory leads by 9–17 points. A tool that defects after earning trust erases RRL's lead |
+| **T** — tool selection (`sim/run_gate_t.py`) | Real ToolRet requests and tool descriptions; tool updates, poisoned twins, flaky tools, held-out requests | Learning beats the static reranker (≈30% → 41–58%); **RRL and MemRL-style are close** (−2.4 to +4.2 points at exploration 0.10) |
 | **W** — web-scraping tools (`sim/run_gate_w.py`) | 8 executable extractors on 30 generated shops; tools' own success reports; redesigns; held-out sites | Same pattern as M: RRL resists over-reporting tools under sparse verification and generalizes to new sites; per-site memory wins when every call is verified |
-| **G** — private-API docs (`sim/run_gate_g.py`) | Real Gemini code against a generated library; poisoned guides; API switch | About level with MemRL-style without drift; **MemRL-style adapts 9–21 points better** after an API switch |
+| **G** — private-API docs (`sim/run_gate_g.py`) | Real Gemini code against a generated library; poisoned guides; API switch | About level with MemRL-style without drift; **MemRL-style adapts 9–25 points better** after an API switch |
 | **F** — MBPP, leak-free (`sim/run_gate_matrix.py`) | Gate E without the answer leak, replayable | Retrieval barely changes the outcome (reranker 57.1% = no retrieval 57.2%) |
 
 **Where RRL helps:** selecting among tools whose descriptions or self-reports can mislead, with
@@ -310,7 +313,7 @@ only some calls verifiable, and with new contexts appearing. **Where it does not
 call is verified, contexts recur and no tool misleads (a per-context memory is simpler and
 better), and under abrupt changes with trustworthy feedback (a fast-forgetting average adapts
 sooner). The recommended configuration adds `stick_to_verified=True` with a per-context
-`cluster_id`, which closes most of the gap to per-context memory.
+`cluster_id`, which closes part of the gap to per-context memory.
 
 **Change detection is a trade-off:** the default z-test detector avoids false resets, the
 original fast detector (`ChangeDetector(window=4, threshold=0.6)`) adapts faster to abrupt

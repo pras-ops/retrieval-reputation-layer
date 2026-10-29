@@ -69,10 +69,18 @@ class SourceReliability:
 
     def rates(self, src: str, doc_id: Optional[str] = None) -> Tuple[float, float]:
         """Posterior-mean (sensitivity, specificity), per document when doc_id is given."""
+        # The prior is centred on "uninformative": both conditional "yes" rates start at the
+        # source's own overall "yes" rate, so a source whose answer does not depend on the
+        # outcome gets sens + spec = 1 and no weight however unbalanced the verified outcomes
+        # are. (A Beta prior centred on 0.5 gives an always-yes source spec ~ 1/3 after one
+        # verified failure, and so a positive weight.)
         a0, b0 = self.prior
+        strength = a0 + b0
         tp, fn, tn, fp = self.counts[src]
-        sens = (tp + a0) / (tp + fn + a0 + b0)
-        spec = (tn + a0) / (tn + fp + a0 + b0)
+        n = tp + fn + tn + fp
+        yes = (tp + fp) / n if n > 0 else 0.5
+        sens = (tp + strength * yes) / (tp + fn + strength)
+        spec = 1.0 - (fp + strength * yes) / (fp + tn + strength)
         if doc_id is None or self.doc_strength is None or doc_id not in self.doc_counts:
             return sens, spec
         k = self.doc_strength
@@ -86,8 +94,10 @@ class SourceReliability:
         can change its behavior.
         """
         sens, spec = self.rates(src, doc_id)
-        if sens + spec <= 1.0:
+        if sens + spec <= 1.0 + 1e-9:
             return 0.0
+        eps = 1e-6
+        sens, spec = min(max(sens, eps), 1.0 - eps), min(max(spec, eps), 1.0 - eps)
         r = math.log(sens / (1.0 - spec)) if says_success else math.log((1.0 - sens) / spec)
         return max(-self.max_weight, min(self.max_weight, r))
 
