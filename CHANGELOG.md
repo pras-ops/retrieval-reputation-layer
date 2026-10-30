@@ -31,6 +31,11 @@ All notable changes to this project are documented here. The format is based on
   and is the new ablation `rrl_combined_cdsoft`. With a context, `ReputationLayer` now tests the
   tool's global counters as well as the context's, as documented.
 
+### Changed
+- **Workflows use the Node 24 releases of their actions**: `actions/checkout@v7`,
+  `actions/setup-python@v7`, `github/codeql-action@v4` (v3 is deprecated in December 2026),
+  `actions/upload-artifact@v7` and `actions/download-artifact@v8`.
+
 ### Added
 - **Fixed-rule ablation** `rrl_combined_ctx_verified_fixed` (RRL + per-context + verified memory
   with the fixed feedback rule instead of learned source reliability), with paired comparisons
