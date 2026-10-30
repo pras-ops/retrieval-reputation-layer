@@ -19,6 +19,10 @@ LABEL = {
     "query_memory": "Per-context memory",
     "query_memory_robust": "Per-context memory, robust",
     "memrl_q": "MemRL-style",
+    "memrl_official": "MemRL (official rule)",
+    "rated": "RATED",
+    "rated_verified": "RATED, verified only",
+    "cesa": "ESA (CESA-LinUCB)",
     "rrl_combined": "RRL (global)",
     "rrl_combined_ctx": "RRL + per-context",
     "rrl_combined_ctx_verified": "\\textbf{RRL full}",
@@ -82,11 +86,10 @@ def table(name, caption, label, stem, scens, policies, heldout=True, best_from=N
                 v = f"\\textbf{{{v}}}"
             h = data[sc].get("heldout", {}).get("pass_rate", {}).get(p) if heldout else None
             cells.append(f"{v} / {pct(h[0])}" if h else v)
-        rows.append(f"{LABEL[p]} & " + " & ".join(cells) + " \\\\")
-        if p in ("memrl_q", "query_memory_robust") and policies[policies.index(p) + 1 :][:1] == [
-            "rrl_combined"
-        ]:
+        prev = policies[policies.index(p) - 1] if policies.index(p) else None
+        if p.startswith("rrl") and prev is not None and not prev.startswith("rrl"):
             rows.append("\\midrule")
+        rows.append(f"{LABEL[p]} & " + " & ".join(cells) + " \\\\")
     sep = "\\setlength{\\tabcolsep}{3.5pt}\n" if len(scens) > 4 else ""
     note = "Overall / held-out success (\\%)" if heldout else "Success (\\%)"
     body = "\n".join(rows)
@@ -116,6 +119,23 @@ TRUST_STEMS = [
     ("gate_t_toolbench", "T ToolBench"),
     ("gate_t_toollens", "T ToolLens"),
     ("gate_g_hard", "G"),
+    ("gate_x_mcptox", "X (MCPTox)"),
+    ("gate_v_mcpevol", "V (MCPEvol)"),
+]
+EXTERNAL = ["memrl_q", "memrl_official", "rated", "rated_verified", "cesa"]
+# Scenarios for the cross-gate comparison with the external baselines.
+EXT_CELLS = [
+    ("gate_m_replay", "stationary", "M", "Verified"),
+    ("gate_m_replay", "spot_check", "M", "Spot"),
+    ("gate_m_replay", "defect_spot_check", "M", "Def.+spot"),
+    ("gate_w", "spot_check", "W", "Spot"),
+    ("gate_t_toolbench", "fooled", "T-TB", "Fooled"),
+    ("gate_t_toollens", "fooled", "T-TL", "Fooled"),
+    ("gate_g_hard", "drift", "G", "Drift"),
+    ("gate_x_mcptox", "stationary", "X", "Verified"),
+    ("gate_x_mcptox", "spot_check", "X", "Spot"),
+    ("gate_v_mcpevol", "stationary", "V", "Verified"),
+    ("gate_v_mcpevol", "spot_check", "V", "Spot"),
 ]
 LEARNED = "rrl_combined_ctx_verified_vs_rrl_combined_ctx_verified_fixed"
 GLOBAL = "rrl_combined_globalrel_vs_rrl_combined"
@@ -180,6 +200,65 @@ def trust_table():
         "excludes zero.}\n\\label{tab:trust}\n\\end{table}\n"
     )
     with open(os.path.join(OUT, "trust.tex"), "w") as f:
+        f.write(tex)
+
+
+SHORT = {
+    "memrl_q": "MemRL-style",
+    "memrl_official": "MemRL (official)",
+    "rated": "RATED",
+    "rated_verified": "RATED (verified)",
+    "cesa": "ESA",
+}
+
+
+def external_table():
+    """RRL full against the external baselines: paired difference (points), 30 seeds."""
+    head = " & ".join(SHORT[b] for b in EXTERNAL)
+    body = []
+    for stem, sc, g, scn in EXT_CELLS:
+        cells = []
+        for b in EXTERNAL:
+            c = load(stem, sc)["comparisons"]["overall"][f"rrl_combined_ctx_verified_vs_{b}"]
+            lo, hi = c["ci95"]
+            v = minus(f"{c['mean_diff'] * 100:+.1f}")
+            cells.append(f"\\textbf{{{v}}}" if lo > 0 or hi < 0 else v)
+        body.append(f"{g} & {scn} & " + " & ".join(cells) + " \\\\")
+    tex = (
+        "\\begin{table}[t]\n\\centering\n\\small\n\\setlength{\\tabcolsep}{4pt}\n"
+        "\\begin{tabular}{ll" + "r" * len(EXTERNAL) + "}\n\\toprule\n"
+        f"Gate & Scenario & {head} \\\\\n\\midrule\n"
+        + "\n".join(body)
+        + "\n\\bottomrule\n\\end{tabular}\n"
+        "\\caption{RRL full minus each of the closest methods, in the same pools with the same "
+        "feedback: mean paired difference in overall success (points) over 30 seeds; bold where the "
+        "95\\% CI excludes zero; positive favours RRL. Adaptations of each method are in "
+        "Section~\\ref{sec:bench}.}\n"
+        "\\label{tab:external}\n\\end{table}\n"
+    )
+    with open(os.path.join(OUT, "external.tex"), "w") as f:
+        f.write(tex)
+
+
+def mcptox_models_table():
+    """MCPTox's own per-agent rates on the kept requests (from its labels, no selection)."""
+    models = load("gate_x_mcptox", "stationary")["models"]
+    rows = []
+    for name, r in sorted(models.items(), key=lambda kv: -kv[1]["task_done"]):
+        cells = [pct(r["task_done"]), pct(r["attack_success_of_valid"]), pct(r["direct_execution"])]
+        label = name.replace("_", "\\_")
+        rows.append(f"{label} & {r['n']} & " + " & ".join(cells) + " \\\\")
+    tex = (
+        "\\begin{table}[H]\n\\centering\n\\small\n\\begin{tabular}{lrrrr}\n\\toprule\n"
+        "Agent & Requests & Task done & Attack success & Poisoned tool called \\\\\n"
+        " &  & (\\%) & (\\% of valid) & (\\%) \\\\\n\\midrule\n"
+        + "\n".join(rows)
+        + "\n\\bottomrule\n\\end{tabular}\n"
+        "\\caption{MCPTox's recorded agents on the requests Gate X keeps, from MCPTox's own labels: "
+        "the share that did exactly what the user asked, attacks that succeeded among valid "
+        "outputs, and calls to the poisoned tool itself.}\n\\label{tab:mcptoxmodels}\n\\end{table}\n"
+    )
+    with open(os.path.join(OUT, "mcptox_models.tex"), "w") as f:
         f.write(tex)
 
 
@@ -430,6 +509,9 @@ def numbers():
         sum(ov(st, sc, "rrl_combined_e10") >= ov(st, sc, "memrl_q") - 0.5 for st, sc in t_cells)
     )
     m["TcellsN"] = str(len(t_cells))
+    rated_minus_rrl = [ov(st, sc, "rated") - ov(st, sc, full) for st, sc in t_cells]
+    m["TRatedAhead"] = f"{max(rated_minus_rrl):.1f}"
+    m["TRatedBehind"] = f"{-min(rated_minus_rrl):.1f}"
     e_cells = [
         (st, sc)
         for st in ("gate_t_toolbench", "gate_t_toollens", "gate_g_hard")
@@ -450,6 +532,88 @@ def numbers():
     m["ETenBetter"] = str(sum(c["ci95"][0] > 0 for c in e_cmp))
     m["ETenWorse"] = str(sum(c["ci95"][1] < 0 for c in e_cmp))
     m["ETenN"] = str(len(e_cmp))
+
+    # The closest methods (Section "Against the closest methods").
+    def cmp_(stem, sc, b):
+        c = load(stem, sc)["comparisons"]["overall"][f"rrl_combined_ctx_verified_vs_{b}"]
+        return c["mean_diff"] * 100, c["ci95"][0] * 100, c["ci95"][1] * 100
+
+    for key, pol in (
+        ("Rated", "rated"),
+        ("RatedVer", "rated_verified"),
+        ("MemOff", "memrl_official"),
+        ("Cesa", "cesa"),
+    ):
+        m[f"Mspot{key}"] = pct(spot["overall"][pol][0])
+        m[f"Mspot{key}Poison"] = pct(spot["poisoned_choice_rate"][pol])
+        m[f"Mver{key}"] = pct(ver["overall"][pol][0])
+    d = cmp_("gate_m_replay", "spot_check", "rated_verified")
+    m["MspotVsRatedVer"] = f"{d[0]:+.1f}"
+    m["MspotVsRatedVerCI"] = f"[{d[1]:+.1f}, {d[2]:+.1f}]"
+    d = cmp_("gate_m_replay", "update_spot_check", "rated_verified")
+    m["MupspotVsRatedVer"] = f"{d[0]:+.1f}"
+    m["MupspotVsRatedVerCI"] = f"[{d[1]:+.1f}, {d[2]:+.1f}]"
+    m["MupspotVsRatedVerAbs"] = f"{d[0]:.1f}"
+    m["WspotRatedVerLead"] = span(
+        [-cmp_("gate_w", sc, "rated_verified")[0] for sc in ("spot_check", "redesign_spot_check")]
+    )
+    d = cmp_("gate_m_replay", "stationary", "rated")
+    m["MverVsRated"] = f"{d[0]:+.1f}"
+    m["MverVsRatedCI"] = f"[{d[1]:+.1f}, {d[2]:+.1f}]"
+    m["MverVsRatedAbs"] = f"{d[0]:.1f}"
+    m["CleanVerRated"] = f"{ov('gate_m_replay_clean', 'stationary', 'rated'):.1f}"
+    m["CleanVerRRL"] = f"{ov('gate_m_replay_clean', 'stationary', full):.1f}"
+    faced = [
+        ov(st, sc, p_)
+        for st, sc in poisoned_spot
+        for p_ in ("rated", "memrl_official", "memrl_q", "cesa")
+    ]
+    m["FaceValueMax"] = f"{max(faced):.1f}"
+    # Gate X (MCPTox) and Gate V (MCPEvol-Bench).
+    xv, xs = load("gate_x_mcptox", "stationary"), load("gate_x_mcptox", "spot_check")
+    for key, pol in (
+        ("Memory", mem),
+        ("Rated", "rated"),
+        ("RRL", full),
+        ("Emb", "static_rrf"),
+        ("CE", "static_ce"),
+        ("LLM", "llm_picks"),
+    ):
+        m[f"Xver{key}"] = pct(xv["overall"][pol][0])
+        m[f"Xspot{key}"] = pct(xs["overall"][pol][0])
+    m["XverPoisonRRL"] = pct(xv["poisoned_choice_rate"][full])
+    m["XspotPoisonRRL"] = pct(xs["poisoned_choice_rate"][full])
+    m["XpoisonCE"] = pct(xv["poisoned_choice_rate"]["static_ce"])
+    m["XattackLLM"] = pct(xv["attack_choice_rate"]["llm_picks"])
+    sel = [v for k, v in xs["attack_choice_rate"].items() if k != "llm_picks"]
+    sel += [v for k, v in xv["attack_choice_rate"].items() if k != "llm_picks"]
+    m["XattackSelMax"] = pct(max(sel))
+    d = cmp_("gate_x_mcptox", "stationary", mem)
+    m["XverMemoryLead"] = f"{-d[0]:.1f}"
+    d = cmp_("gate_x_mcptox", "spot_check", "rated")
+    m["XspotRatedLead"] = f"{-d[0]:.1f}"
+    m["XspotRatedLeadCI"] = f"[{-d[2]:.1f}, {-d[1]:.1f}]"
+    vv, vs = load("gate_v_mcpevol", "stationary"), load("gate_v_mcpevol", "spot_check")
+    for key, pol in (("RRL", full), ("Rated", "rated"), ("MemRL", "memrl_q"), ("Memory", mem)):
+        m[f"Vver{key}"] = pct(vv["overall"][pol][0])
+        m[f"Vspot{key}"] = pct(vs["overall"][pol][0])
+    d = cmp_("gate_v_mcpevol", "stationary", "rated")
+    m["VverVsRated"] = f"{d[0]:+.1f}"
+    m["VverVsRatedCI"] = f"[{d[1]:+.1f}, {d[2]:+.1f}]"
+    d = cmp_("gate_v_mcpevol", "spot_check", "rated")
+    m["VspotRatedLead"] = f"{-d[0]:.1f}"
+    m["VspotRatedLeadCI"] = f"[{-d[2]:.1f}, {-d[1]:.1f}]"
+    data_dir = os.path.abspath(os.path.join(HERE, "..", "data"))
+    with open(os.path.join(data_dir, "gate_x", "meta.json")) as fh:
+        xm = json.load(fh)
+    with open(os.path.join(data_dir, "gate_v", "meta.json")) as fh:
+        vm = json.load(fh)
+    m["XInst"] = f"{xm['instances']:,}"
+    m["XCtx"] = str(xm["contexts"])
+    m["XDropped"] = str(sum(xm["dropped"].values()))
+    m["VReq"] = str(vm["requests"])
+    m["VTasks"] = str(vm["tasks"])
+    m["VChanged"] = str(vm["changed_pools"])
     with open(os.path.join(OUT, "numbers.tex"), "w") as f:
         for k, v in m.items():
             f.write(f"\\newcommand{{\\{k}}}{{{minus(v)}}}\n")
@@ -462,6 +626,7 @@ def main():
         "query_memory",
         "query_memory_robust",
         "memrl_q",
+        *EXTERNAL[1:],
         "rrl_combined",
         "rrl_combined_ctx_verified",
         "rrl_combined_ctx_verified_fixed",
@@ -473,11 +638,37 @@ def main():
         "query_memory",
         "query_memory_robust",
         "memrl_q",
+        *EXTERNAL[1:],
         "rrl_combined",
         "rrl_combined_ctx_verified",
         "rrl_combined_ctx_verified_fixed",
         "oracle",
     ]
+    table(
+        "gate_x",
+        "Gate X: tool selection on MCPTox's requests, toolsets and poisoned tools; the correct "
+        "tool is the one MCPTox's agents called when they did exactly what the user asked. "
+        "LLM picks are MCPTox's recorded Gemini 2.5 Flash responses, scored by its labels. Held-out: "
+        "nine servers seen only in a final block.",
+        "tab:gatex",
+        "gate_x_mcptox",
+        ["stationary", "spot_check"],
+        mcp_pol,
+        env="table",
+    )
+    table(
+        "gate_v",
+        "Gate V: tool selection on MCPEvol-Bench's evolving toolsets; the correct tools are those "
+        "its successful reference runs called. Held-out: 20\\% of tasks, seen only on the late "
+        "toolset.",
+        "tab:gatev",
+        "gate_v_mcpevol",
+        ["stationary", "spot_check"],
+        main_pol,
+        env="table",
+    )
+    external_table()
+    mcptox_models_table()
     table(
         "gate_m",
         "Gate M: tool selection over local MCP servers with a poisoned server "

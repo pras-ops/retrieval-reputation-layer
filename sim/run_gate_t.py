@@ -47,6 +47,7 @@ from run_gate_matrix import (
     plot,
     print_report,
     run_policies,
+    set_semantic,
     summarize,
 )
 
@@ -211,7 +212,7 @@ def build_subset(subset: str, embedder, cross_encoder) -> dict:
     qemb = embedder.encode([q["text"] for q in qrows], batch_size=64, normalize_embeddings=True)
     bm25 = _bm25([_tok(text[t]) for t in ids])
 
-    pools, ce_order, gold = {}, {}, {}
+    pools, ce_order, gold, cosine = {}, {}, {}, {}
     recall_hits = 0
     for qi, q in enumerate(qrows):
         vec = emb @ qemb[qi]
@@ -237,6 +238,7 @@ def build_subset(subset: str, embedder, cross_encoder) -> dict:
         recall_hits += 1
         pools[str(qi)] = [[j, s] for j, s in pool]
         ce_order[str(qi)] = order
+        cosine[str(qi)] = {str(j): round(float(vec[j]), 6) for j, _ in pool}
         gold[str(qi)] = sorted(index[t] for t in q["gold"])
 
     meta = {
@@ -260,7 +262,14 @@ def build_subset(subset: str, embedder, cross_encoder) -> dict:
         for i, t in enumerate(ids)
         if i in used
     ]
-    return {"meta": meta, "docs": docs, "pools": pools, "ce_order": ce_order, "gold": gold}
+    return {
+        "meta": meta,
+        "docs": docs,
+        "pools": pools,
+        "ce_order": ce_order,
+        "gold": gold,
+        "cosine": cosine,
+    }
 
 
 def build() -> None:
@@ -275,6 +284,24 @@ def build() -> None:
         with open(os.path.join(T_DIR, f"{subset}.json"), "w") as f:
             json.dump(data, f)
         print(f"[build] {subset}: {json.dumps(data['meta'])}")
+
+
+def add_cosines() -> None:
+    """Rebuild deterministically and store each pool's raw cosines (for the RATED and MemRL
+    ports), after checking that the rebuilt pools match the frozen ones."""
+    from sentence_transformers import CrossEncoder, SentenceTransformer
+
+    embedder = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+    cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device="cpu")
+    for subset in SUBSETS:
+        data = load(subset)
+        fresh = build_subset(subset, embedder, cross_encoder)
+        if fresh["pools"] != data["pools"] or fresh["ce_order"] != data["ce_order"]:
+            sys.exit(f"{subset}: rebuilt pools differ from the frozen ones; not adding cosines")
+        data["cosine"] = fresh["cosine"]
+        with open(os.path.join(T_DIR, f"{subset}.json"), "w") as f:
+            json.dump(data, f)
+        print(f"[cosine] {subset}: {len(data['cosine'])} pools")
 
 
 # ---------------------------------------------------------------- replay
@@ -383,6 +410,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--build", action="store_true", help="download ToolRet and build pools")
+    ap.add_argument(
+        "--cosine", action="store_true", help="add raw cosines to the frozen pools (RATED, MemRL)"
+    )
     ap.add_argument("--subset", default="all", choices=sorted(SUBSETS) + ["all"])
     ap.add_argument("--seeds", type=int, default=30)
     ap.add_argument("--epochs", type=int, default=3)
@@ -395,6 +425,8 @@ def main() -> None:
         return
     if args.build:
         build()
+    if args.cosine:
+        add_cosines()
     if args.ablation:
         enable_ablation()
 
@@ -407,6 +439,9 @@ def main() -> None:
         if not os.path.exists(path):
             sys.exit(f"{path} missing; run with --build first.")
         data = load(subset)
+        set_semantic(
+            {int(q): {int(d): c for d, c in v.items()} for q, v in data.get("cosine", {}).items()}
+        )
         print(f"\n### {subset}: {json.dumps(data['meta'])}")
         for sc_name in names:
             per_seed, n_tail = {}, 0

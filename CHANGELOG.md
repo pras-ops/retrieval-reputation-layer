@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **The closest methods as baselines** (`sim/run_gate_matrix.py`): `memrl_official` (MemRL's own
+  selection and update rule, ported from its code), `rated` / `rated_verified` (RATED's discounted
+  LinUCB fused with semantic similarity, learning from all feedback / from verified calls only) and
+  `cesa` (ESA's CESA-LinUCB). RATED and MemRL read raw MiniLM cosines (`set_semantic`, cached per
+  gate). The per-context memory baselines now remember the tool rather than its position in the
+  reranker's order (identical results with fixed pools).
+- **Gate X** (`sim/run_gate_x.py`): tool selection derived from MCPTox's requests, toolsets,
+  poisoned tools and labels, with its recorded Gemini responses as the LLM baseline.
+- **Gate V** (`sim/run_gate_v.py`): tool selection on MCPEvol-Bench's evolving toolsets.
+  Neither benchmark is redistributed; only ids, tool names, scores and label codes are committed.
+
 ### Fixed
 - **Source reliability gave an always-yes source a positive vote** when verified outcomes were
   few and unbalanced (a Beta(1, 1) prior centred on 0.5 gives spec ≈ 1/3 after one verified

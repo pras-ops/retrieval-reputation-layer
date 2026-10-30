@@ -1,0 +1,26 @@
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Overall / held-out success (\%) & Verified & Spot check \\
+\midrule
+Static reranker & 51.1 / 61.0 & 51.1 / 61.0 \\
+LLM picks from tool list & 36.0 / 32.7 & 36.0 / 32.7 \\
+Per-context memory & \textbf{84.5} / 83.7 & 65.1 / 68.9 \\
+Per-context memory, robust & 83.5 / 82.6 & 57.6 / 65.7 \\
+MemRL-style & 40.1 / 42.1 & 27.8 / 29.2 \\
+MemRL (official rule) & 28.7 / 34.3 & 28.3 / 27.5 \\
+RATED & 73.6 / 74.2 & \textbf{66.2} / 68.0 \\
+RATED, verified only & 73.6 / 74.2 & 66.1 / 68.8 \\
+ESA (CESA-LinUCB) & 20.0 / 18.8 & 20.0 / 18.8 \\
+\midrule
+RRL (global) & 53.2 / 55.1 & 51.6 / 57.8 \\
+\textbf{RRL full} & 70.8 / 69.7 & 58.9 / 61.5 \\
+RRL full, fixed rule & 70.8 / 69.7 & 56.3 / 56.2 \\
+\textit{Best possible} & 100.0 / 100.0 & 100.0 / 100.0 \\
+\bottomrule
+\end{tabular}
+\caption{Gate X: tool selection on MCPTox's requests, toolsets and poisoned tools; the correct tool is the one MCPTox's agents called when they did exactly what the user asked. LLM picks are MCPTox's recorded Gemini 2.5 Flash responses, scored by its labels. Held-out: nine servers seen only in a final block.}
+\label{tab:gatex}
+\end{table}

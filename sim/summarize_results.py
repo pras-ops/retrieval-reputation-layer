@@ -15,6 +15,10 @@ MAIN = [
     ("query_memory", "reuse what worked"),
     ("query_memory_robust", "reuse what worked, robust"),
     ("memrl_q", "MemRL-style"),
+    ("memrl_official", "MemRL (official selection and update rule)"),
+    ("rated", "RATED (unverified feedback at face value)"),
+    ("rated_verified", "RATED, verified calls only"),
+    ("cesa", "ESA-style trust aggregator (CESA-LinUCB)"),
     ("rrl_combined", "RRL combined"),
     ("rrl_combined_e10", "RRL combined, explore 0.10"),
     ("rrl_combined_ctx", "RRL combined + per-context"),
@@ -38,6 +42,10 @@ MCP = [
     ("query_memory", "reuse what worked"),
     ("query_memory_robust", "reuse what worked, robust"),
     ("memrl_q", "MemRL-style"),
+    ("memrl_official", "MemRL (official selection and update rule)"),
+    ("rated", "RATED (unverified feedback at face value)"),
+    ("rated_verified", "RATED, verified calls only"),
+    ("cesa", "ESA-style trust aggregator (CESA-LinUCB)"),
     ("rrl_combined", "RRL combined"),
     ("rrl_combined_ctx", "RRL combined + per-context"),
     ("rrl_combined_ctx_verified", "RRL + per-context + verified memory"),
@@ -82,6 +90,16 @@ GATES = [
         ["defect", "defect_spot_check"],
     ),
     (
+        "gate_x_mcptox",
+        "Gate X — tool selection on MCPTox (derived)",
+        ["stationary", "spot_check"],
+    ),
+    (
+        "gate_v_mcpevol",
+        "Gate V — tool selection on MCPEvol-Bench toolsets (derived)",
+        ["stationary", "spot_check"],
+    ),
+    (
         "gate_g_hard",
         "Gate G hard — private-API docs, poisoned reranker",
         ["stationary", "sycophantic", "fooled", "drift", "drift_sycophantic", "drift_fooled"],
@@ -120,7 +138,7 @@ def table(stem: str, title: str, scen: list, rows: list) -> str:
 
 def main() -> None:
     for stem, title, scen in GATES:
-        print(table(stem, title, scen, MCP if stem.startswith("gate_m") else MAIN))
+        print(table(stem, title, scen, MCP if stem.startswith(("gate_m", "gate_x")) else MAIN))
         print(table(stem, title + " — ablation", scen, ABLATION))
 
 

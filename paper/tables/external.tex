@@ -1,0 +1,24 @@
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Gate & Scenario & MemRL-style & MemRL (official) & RATED & RATED (verified) & ESA \\
+\midrule
+M & Verified & \textbf{+30.5} & \textbf{+41.4} & \textbf{+6.5} & \textbf{+6.5} & \textbf{+65.9} \\
+M & Spot & \textbf{+48.2} & \textbf{+46.0} & \textbf{+40.1} & +1.8 & \textbf{+51.8} \\
+M & Def.+spot & \textbf{+33.8} & \textbf{+31.3} & \textbf{+29.0} & +1.4 & \textbf{+36.5} \\
+W & Spot & \textbf{+47.8} & \textbf{+44.9} & \textbf{+27.8} & \textbf{$-$3.3} & \textbf{+50.6} \\
+T-TB & Fooled & $-$0.3 & \textbf{+5.0} & \textbf{$-$5.0} & $-$0.5 & \textbf{+20.5} \\
+T-TL & Fooled & \textbf{+2.6} & \textbf{+23.0} & \textbf{+16.5} & \textbf{+15.0} & \textbf{+36.3} \\
+G & Drift & \textbf{$-$12.7} & +0.0 & \textbf{+28.7} & \textbf{+28.7} & \textbf{+56.0} \\
+X & Verified & \textbf{+30.7} & \textbf{+42.1} & \textbf{$-$2.8} & \textbf{$-$2.8} & \textbf{+50.8} \\
+X & Spot & \textbf{+31.1} & \textbf{+30.6} & \textbf{$-$7.3} & \textbf{$-$7.2} & \textbf{+38.9} \\
+V & Verified & +0.2 & \textbf{+2.0} & $-$0.1 & $-$0.1 & \textbf{+23.5} \\
+V & Spot & +0.6 & \textbf{+3.0} & \textbf{$-$2.7} & \textbf{$-$3.2} & \textbf{+9.5} \\
+\bottomrule
+\end{tabular}
+\caption{RRL full minus each of the closest methods, in the same pools with the same feedback: mean paired difference in overall success (points) over 30 seeds; bold where the 95\% CI excludes zero; positive favours RRL. Adaptations of each method are in Section~\ref{sec:bench}.}
+\label{tab:external}
+\end{table}

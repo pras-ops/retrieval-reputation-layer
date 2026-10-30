@@ -1,0 +1,17 @@
+{
+  "source": "Octobrist/MCPEvol-Bench src/custom/data",
+  "commit": "888c779a0fe735f612ca62bdd1fdd7c9e6bf8701",
+  "requests": 825,
+  "tasks": 392,
+  "dropped": {
+    "server missing from status_dict": 41,
+    "reference tool not in the server's toolset": 7
+  },
+  "stages": {
+    "early": 0,
+    "middle": 2,
+    "late": 4
+  },
+  "pool_k": 20,
+  "changed_pools": 212
+}

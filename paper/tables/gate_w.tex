@@ -6,13 +6,17 @@
 Overall / held-out success (\%) & Verified & Spot check & Redesign & Redesign + spot \\
 \midrule
 Static reranker & 0.0 / 0.0 & 0.0 / 0.0 & 0.0 / 0.0 & 0.0 / 0.0 \\
-Per-context memory & 67.0 / 61.4 & 50.4 / 19.6 & 64.2 / 58.5 & \textbf{47.9} / 17.5 \\
+Per-context memory & 67.0 / 61.4 & 50.4 / 19.6 & 64.2 / 58.5 & 47.9 / 17.5 \\
 Per-context memory, robust & \textbf{73.9} / 61.9 & 27.0 / 11.0 & \textbf{70.4} / 58.9 & 25.2 / 10.3 \\
 MemRL-style & 35.9 / 43.3 & 4.4 / 3.6 & 34.0 / 32.1 & 4.3 / 3.5 \\
+MemRL (official rule) & 33.5 / 20.1 & 7.2 / 6.2 & 32.0 / 13.8 & 6.3 / 2.6 \\
+RATED & 65.6 / 74.2 & 24.4 / 21.5 & 60.4 / 73.1 & 20.4 / 15.0 \\
+RATED, verified only & 65.6 / 74.2 & \textbf{55.5} / 81.0 & 60.4 / 73.1 & \textbf{48.1} / 62.2 \\
+ESA (CESA-LinUCB) & 2.1 / 0.0 & 1.5 / 0.0 & 2.1 / 0.0 & 1.5 / 0.0 \\
 \midrule
 RRL (global) & 51.4 / 68.9 & 47.1 / 75.4 & 45.5 / 53.5 & 39.5 / 53.1 \\
 \textbf{RRL full} & 62.0 / 79.6 & 52.1 / 81.8 & 54.1 / 60.7 & 44.4 / 61.0 \\
-RRL full, fixed rule & 62.0 / 79.6 & \textbf{54.1} / 77.6 & 54.1 / 60.7 & 46.6 / 61.0 \\
+RRL full, fixed rule & 62.0 / 79.6 & 54.1 / 77.6 & 54.1 / 60.7 & 46.6 / 61.0 \\
 \textit{Best possible} & 87.9 / 96.4 & 87.9 / 96.4 & 87.9 / 96.4 & 87.9 / 96.4 \\
 \bottomrule
 \end{tabular}

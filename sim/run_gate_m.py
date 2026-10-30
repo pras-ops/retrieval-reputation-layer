@@ -50,6 +50,7 @@ from run_gate_matrix import (
     RUN_POLICIES,
     enable_ablation,
     make_policy,
+    set_semantic,
     mean_ci,
     paired,
     plot,
@@ -252,6 +253,24 @@ def llm_calls(clean: bool = False) -> None:
 # ---------------------------------------------------------------- replay
 
 
+def cosines() -> Dict[int, Dict[int, float]]:
+    """Raw MiniLM cosine of each site's request to every tool (for the RATED and MemRL ports),
+    computed once and frozen in data/gate_m/cosine.json."""
+    path = os.path.join(M_DIR, "cosine.json")
+    if not os.path.exists(path):
+        from run_gate_matrix import cosine_map, load_models
+
+        embedder, _ = load_models(offline_mock=False)
+        tools = load_json("registry.json")
+        pools = {int(k): v for k, v in load_json("pools.json")["pools"].items()}
+        queries = [{"task_id": s["id"], "text": w.request_text(s)} for s in w.sites()]
+        corpus = {i: {"code": f"{t['name']}: {t['description']}"} for i, t in enumerate(tools)}
+        scores = cosine_map(queries, corpus, pools, embedder)
+        with open(path, "w") as f:
+            json.dump({str(t): {str(d): c for d, c in v.items()} for t, v in scores.items()}, f)
+    return {int(t): {int(d): c for d, c in v.items()} for t, v in load_json("cosine.json").items()}
+
+
 class Env:
     """Recorded MCP responses plus the registry and pools."""
 
@@ -331,7 +350,7 @@ def replay_seed(env: Env, seed: int, epochs: int, scenario: dict):
             usable = [n for n in env.names if not (env.clean and n in POISONED)]
             hist[name] = [max(cell(i, n)[0] for n in usable) for i in range(len(pairs))]
             continue
-        choose, update = make_policy(name, seed, env.ce)
+        choose, update = make_policy(name, seed, env.ce, env.pools)
         h, poison = [], 0
         for i, t in enumerate(stream):
             tool = env.names[int(choose(t, env.pools[t], i))] if name != "no_retrieval" else None
@@ -375,7 +394,7 @@ def live_seed(env: Env, seed: int, epochs: int, scenario: dict):
         }
     ).start_all()
     names = [n for n in RUN_POLICIES if n != "oracle"]
-    policies = {n: make_policy(n, seed, env.ce) for n in names}
+    policies = {n: make_policy(n, seed, env.ce, env.pools) for n in names}
     hist: Dict[str, List[float]] = {n: [] for n in names}
     if env.llm:
         hist["llm_picks"] = []
@@ -503,6 +522,7 @@ def main() -> None:
     if args.ablation:
         enable_ablation()
     env = Env(clean=args.clean)
+    set_semantic(cosines())
     seeds = list(range(42, 42 + args.seeds))
     scen = sorted(SCENARIOS) if args.scenario == "all" else [args.scenario]
     for sc in scen:

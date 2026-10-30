@@ -43,6 +43,7 @@ from run_gate_matrix import (
     plot,
     print_report,
     run_policies,
+    set_semantic,
     summarize,
 )
 
@@ -311,6 +312,16 @@ def build_pools(offline_mock: bool = False):
     return pools, ce
 
 
+def cosines(pools):
+    """Raw MiniLM cosine of each site's request to every tool (for the RATED and MemRL ports)."""
+    from run_gate_matrix import cosine_map, load_models
+
+    embedder, _ = load_models(offline_mock=False)
+    queries = [{"task_id": s["id"], "text": request_text(s)} for s in sites()]
+    corpus = {i: {"code": f"{name}: {desc}"} for i, (name, _, desc) in enumerate(TOOLS)}
+    return cosine_map(queries, corpus, pools, embedder)
+
+
 def outcome_table():
     """(site, page, tool, after_switch) -> (correct, self_ok, schema_ok), all precomputed."""
     table = {}
@@ -416,6 +427,7 @@ def main() -> None:
         enable_ablation()
 
     pools, ce = build_pools()
+    set_semantic(cosines(pools))
     table = outcome_table()
     rates = describe(table)
     print(

@@ -295,10 +295,12 @@ can recover truth (information-theoretic). Robust estimator modes are selectable
 
 Reported honestly — what the tests/sims actually establish, and what they don't.
 
-### Current benchmarks (Gates M, T, W, G, F) — full tables in [RESULTS.md](RESULTS.md)
+### Current benchmarks (Gates M, T, W, G, F, X, V) — full tables in [RESULTS.md](RESULTS.md)
 
 All replay offline from committed data, 30 seeds, paired statistics, with ablations
-(`--ablation`) of every RRL component. Both learning baselines use the verifier whenever it ran.
+(`--ablation`) of every RRL component. Learning baselines use the verifier whenever it ran. The
+closest published methods (MemRL's own selection rule, RATED, ESA) are ported into the same
+replay; learning only from verified calls matters more than which of them is used.
 
 | Gate | What it tests | Headline |
 |---|---|---|
@@ -307,6 +309,8 @@ All replay offline from committed data, 30 seeds, paired statistics, with ablati
 | **W** — web-scraping tools (`sim/run_gate_w.py`) | 8 executable extractors on 30 generated shops; tools' own success reports; redesigns; held-out sites | Same pattern as M: RRL resists over-reporting tools under sparse verification and generalizes to new sites; per-site memory wins when every call is verified |
 | **G** — private-API docs (`sim/run_gate_g.py`) | Real Gemini code against a generated library; poisoned guides; API switch | About level with MemRL-style without drift; **MemRL-style adapts 9–25 points better** after an API switch |
 | **F** — MBPP, leak-free (`sim/run_gate_matrix.py`) | Gate E without the answer leak, replayable | Retrieval barely changes the outcome (reranker 57.1% = no retrieval 57.2%) |
+| **X** — MCPTox-derived (`sim/run_gate_x.py`) | MCPTox's requests, real MCP toolsets and poisoned tools; correct tool from its labels; Gemini's recorded responses | Selectors avoid the attacks (≤3.7% vs 55.7% for Gemini); per-site memory (84.5%) or RATED (66.2% with spot checks) beat RRL (70.8%, 58.9%) |
+| **V** — MCPEvol-Bench-derived (`sim/run_gate_v.py`) | Real evolving toolsets (rewritten descriptions, added tools), reference tool calls | RRL, RATED and MemRL-style tied (≈74%); RATED 2.7 ahead with spot checks |
 
 **Where RRL helps:** selecting among tools whose descriptions or self-reports can mislead, with
 only some calls verifiable, and with new contexts appearing. **Where it does not:** when every
@@ -441,6 +445,8 @@ python3 sim/run_gate_m.py --selftest                      # Gate M: starts local
 python3 sim/run_gate_m.py --scenario all --ablation        # Gate M replay (data/gate_m/)
 python3 sim/run_gate_m.py --live --seeds 3 --scenario update  # Gate M with real MCP calls
 python3 sim/run_gate_m.py --record                        # re-record all MCP responses
+python3 sim/run_gate_x.py --scenario all --ablation        # Gate X replay (data/gate_x/)
+python3 sim/run_gate_v.py --scenario all --ablation        # Gate V replay (data/gate_v/)
 python3 sim/summarize_results.py                         # result tables for RESULTS.md
 ```
 

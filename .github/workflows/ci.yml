@@ -58,3 +58,9 @@ jobs:
 
       - name: Run live MCP gate self-test (starts local MCP servers)
         run: python3 sim/run_gate_m.py --selftest
+
+      - name: Run MCPTox tool-selection gate self-test (smoke test)
+        run: python3 sim/run_gate_x.py --selftest
+
+      - name: Run MCPEvol-Bench tool-selection gate self-test (smoke test)
+        run: python3 sim/run_gate_v.py --selftest

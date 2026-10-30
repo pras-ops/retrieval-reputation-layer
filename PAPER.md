@@ -75,8 +75,8 @@ verification, staged defection) and an honest map of where simpler methods win.
 
 | Supported | Not yet supported |
 |---|---|
-| Large gains over description-based selection, including Gemini choosing from the tool list, when a poisoned tool is present (Gate M) | Superiority over MemRL's official code, RATED or an ESA-style aggregator |
-| Resistance to over-reporting tools under 20% spot checks, where a MemRL-style learner and a robust per-site memory are fooled (Gates M, W) | Results on unmodified MCPTox / MCPEvol-Bench tasks or third-party MCP servers |
+| Large gains over description-based selection, including Gemini choosing from the tool list, when a poisoned tool is present (Gate M) | Superiority over RATED restricted to verified calls (it matches RRL) or over RATED where relevance is reliable |
+| Resistance to over-reporting tools under 20% spot checks, where MemRL (both versions), RATED as published, ESA and a robust per-site memory are fooled (Gates M, W) | Results from MCPTox's / MCPEvol-Bench's own agent evaluations, or third-party MCP servers |
 | Far better accuracy on new contexts than per-context memory (Gates M, W) | Any benefit of learned source trust over a fixed discount |
 | Each component's contribution, by ablation | Protection against staged defection; better adaptation than a fast-forgetting learner under abrupt change |
 
@@ -84,9 +84,9 @@ verification, staged defection) and an honest map of where simpler methods win.
 
 | # | Task | Status |
 |---|---|---|
-| 1 | Run MemRL's official implementation under the same pools, verifier budget and splits | To do |
-| 1b | Compare against **RATED** (code public, EcoAgent benchmark) and an **ESA**-style audit-trust aggregator — the two closest methods | To do |
-| 2 | Evaluate on MCPTox and MCPEvol-Bench (unmodified results reported separately from adapted ones), with Tool-Guard as a security baseline | To do |
+| 1 | Run MemRL's official implementation under the same pools, verifier budget and splits | **Done as a port**: MemRL's own selection and update rule (from its code) in the same replay; its LLM memory pipeline is not run |
+| 1b | Compare against **RATED** (code public, EcoAgent benchmark) and an **ESA**-style audit-trust aggregator — the two closest methods | **Done as ports** (`rated`, `rated_verified`, `cesa`): fooled when learning from unverified feedback; RATED restricted to verified calls matches RRL; RATED leads where relevance is reliable |
+| 2 | Evaluate on MCPTox and MCPEvol-Bench (unmodified results reported separately from adapted ones), with Tool-Guard as a security baseline | **Partly**: tool-selection tasks derived from their unmodified data (Gates X, V), with MCPTox's own per-agent rates reported separately; their agent evaluations and Tool-Guard not run |
 | 3 | A robust per-context memory baseline that survives transient failures | **Done** (`query_memory_robust`): beats RRL by 9–17 points when every call is verified; with 20% spot checks it is fooled and RRL beats it by 19–27 |
 | 4 | Source-trust validation: randomized vs. biased audits, deception concentrated on single tools, correlated sources; report calibration and false reputation updates | To do |
 | 5 | Change detection: recovery delay, false resets under stable conditions, gradual vs. abrupt change, against a fast-forgetting baseline | Partly (resets reported; costs 2–3 points without change; no help against staged defection; delay and gradual drift to do) |

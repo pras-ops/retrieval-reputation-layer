@@ -1,0 +1,17 @@
+{
+  "source": "zhiqiangwang4/MCPTox-Benchmark response_all.json",
+  "commit": "f85189f9ad12504c197c7f920ab818a40657b1fa",
+  "instances": 1154,
+  "dropped": {
+    "no Failure-Ignored call": 194
+  },
+  "servers": 45,
+  "contexts": 348,
+  "label_codes": {
+    "Success": "S",
+    "Failure-Ignored": "I",
+    "Failure-Direct Execution": "D",
+    "Failure-Refused": "R",
+    "None": "N"
+  }
+}

@@ -1,0 +1,40 @@
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Agent & Requests & Task done & Attack success & Poisoned tool called \\
+ &  & (\%) & (\% of valid) & (\%) \\
+\midrule
+LLama-13b & 157 & 91.1 & 1.9 & 5.1 \\
+gpt-3.5-turbo & 1154 & 78.2 & 14.2 & 6.8 \\
+qwen3-8b\_NO\_Think & 1154 & 74.9 & 14.0 & 11.2 \\
+gemma-2-9b & 1138 & 72.7 & 14.4 & 10.7 \\
+LLama-3-8b & 665 & 71.9 & 4.1 & 15.6 \\
+Qwen3-30b-A3b-No-Think & 641 & 68.5 & 7.2 & 23.4 \\
+Qwen3-14b-No-Think & 1081 & 66.7 & 5.0 & 27.5 \\
+Llama-3.1-8B-Instruct & 1154 & 65.8 & 14.0 & 1.7 \\
+Qwen3-8b-No-Think & 1090 & 64.4 & 6.1 & 28.1 \\
+qwen3-32b\_NO\_Think & 1154 & 59.6 & 24.4 & 15.9 \\
+Qwen3-8b-Think & 1038 & 57.7 & 21.0 & 19.2 \\
+qwen3-235b-a22b\_NO\_Think & 1154 & 57.5 & 15.1 & 27.0 \\
+mistral & 969 & 55.9 & 8.2 & 29.6 \\
+claude-3-7-sonnet-20250219-thinking & 253 & 55.3 & 32.7 & 6.3 \\
+qwen3-8b\_Think & 1154 & 54.7 & 39.4 & 5.8 \\
+Qwen3-14b-Think & 1104 & 52.0 & 25.2 & 22.0 \\
+claude-3-7-sonnet & 901 & 50.3 & 34.5 & 3.9 \\
+qwen3-235b-a22b\_Think & 1154 & 47.5 & 48.3 & 3.9 \\
+Llama-3.1-70B-Instruct & 1154 & 39.9 & 21.4 & 9.4 \\
+qwen3-32b\_Think & 1154 & 36.9 & 57.2 & 5.5 \\
+gemini-2.5-flash & 1154 & 35.6 & 57.3 & 5.5 \\
+DeepSeek-v3 & 1154 & 32.8 & 57.9 & 9.2 \\
+Deepseek-qwen3-8b-Think & 351 & 30.5 & 8.6 & 45.0 \\
+gpt-4o-mini & 1154 & 28.0 & 61.7 & 9.1 \\
+Phi-4-Think & 865 & 23.6 & 69.3 & 6.0 \\
+DeepSeek-R1 & 1154 & 19.2 & 73.4 & 5.6 \\
+o1-mini & 1154 & 12.3 & 75.0 & 1.6 \\
+\bottomrule
+\end{tabular}
+\caption{MCPTox's recorded agents on the requests Gate X keeps, from MCPTox's own labels: the share that did exactly what the user asked, attacks that succeeded among valid outputs, and calls to the poisoned tool itself.}
+\label{tab:mcptoxmodels}
+\end{table}

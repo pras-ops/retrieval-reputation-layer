@@ -70,7 +70,9 @@ import math
 import os
 import random
 import re
+import statistics
 import sys
+import zlib
 from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -104,6 +106,10 @@ POLICIES = [
     "query_memory",
     "query_memory_robust",
     "memrl_q",
+    "memrl_official",
+    "rated",
+    "rated_verified",
+    "cesa",
     "rrl",
     "rrl_nodecay",
     "rrl_ce",
@@ -113,6 +119,9 @@ POLICIES = [
     "rrl_query",
     "oracle",
 ]
+
+# The strongest published competitors, ported into this harness (see make_policy).
+EXTERNAL_BASELINES = ["memrl_official", "rated", "rated_verified", "cesa"]
 
 # Ablations of rrl_combined, run with --ablation. Each is rrl_combined with one change.
 ABLATIONS = [
@@ -433,6 +442,65 @@ class OutcomeTable:
 
 
 Pool = List[Tuple[int, float]]  # (doc task_id, normalized hybrid sim)
+
+# Feature vectors for the linear bandits (RATED, ESA). Those methods use a query embedding as
+# context; this harness has no embedding for every gate, so each request gets a fixed random
+# unit vector plus a shared bias term, and each tool a fixed random unit vector (ESA's trust
+# features). Vectors depend only on the id, so every policy and seed sees the same ones.
+CTX_DIM, TOOL_DIM = 33, 16
+_VECTORS: Dict[Tuple[str, object], object] = {}
+
+
+def _unit(kind: str, key, dim: int):
+    import numpy as np
+
+    if (kind, key) not in _VECTORS:
+        rng = np.random.default_rng(zlib.crc32(f"{kind}:{key!r}".encode()))
+        v = rng.standard_normal(dim)
+        _VECTORS[(kind, key)] = v / np.linalg.norm(v)
+    return _VECTORS[(kind, key)]
+
+
+def context_vector(t):
+    """Bias plus a random unit vector for request t, scaled to unit length."""
+    import numpy as np
+
+    return np.concatenate(([1.0], _unit("ctx", t, CTX_DIM - 1))) / math.sqrt(2.0)
+
+
+# Raw cosine similarity of each request to each tool in its pool. RATED and MemRL weigh raw
+# embedding similarity, while the pools hold min-max normalised hybrid scores, which widen the gaps
+# between candidates; the ported methods read these instead. Each gate sets them (per seed in
+# Gate F); when a score is missing the pool score is used.
+SEMANTIC: Dict[object, Dict[object, float]] = {}
+
+
+def set_semantic(scores: Optional[Dict]) -> None:
+    SEMANTIC.clear()
+    SEMANTIC.update(scores or {})
+
+
+def cosine_map(queries: List[dict], corpus: Dict[int, dict], pools: Dict, embedder) -> Dict:
+    """{task: {doc: cosine}} for every document in each task's pool (normalised MiniLM vectors)."""
+    texts = {q["task_id"]: q["text"] for q in queries}
+    tasks = [t for t in pools if t in texts]
+    docs = sorted({d for t in tasks for d, _ in pools[t]})
+    q_emb = embedder.encode([texts[t] for t in tasks], normalize_embeddings=True, batch_size=64)
+    d_emb = embedder.encode(
+        [corpus[d]["code"] for d in docs], normalize_embeddings=True, batch_size=64
+    )
+    col = {d: i for i, d in enumerate(docs)}
+    return {
+        t: {d: round(float(q_emb[i] @ d_emb[col[d]]), 6) for d, _ in pools[t]}
+        for i, t in enumerate(tasks)
+    }
+
+
+def _next_in(order: List, doc) -> object:
+    """The tool after `doc` in a reranker order (the first one if `doc` is not in it)."""
+    return order[(order.index(doc) + 1) % len(order)] if doc in order else order[0]
+
+
 Policy = Tuple[
     Callable[[int, Pool, int], object], Callable[[int, object, OutcomeSignals, int], None]
 ]
@@ -449,8 +517,16 @@ def naive_reward(signals: OutcomeSignals) -> float:
     return 0.5 if y is None else y
 
 
-def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
-    """Returns (choose(task_id, pool, step) -> doc, update(task_id, doc, signals, step))."""
+def make_policy(
+    name: str,
+    seed: int,
+    ce_order: Dict[int, List[int]],
+    pools: Optional[Dict[int, Pool]] = None,
+) -> Policy:
+    """
+    Returns (choose(task_id, pool, step) -> doc, update(task_id, doc, signals, step)).
+    `pools` (optional) gives the corpus similarity statistics MemRL normalises with.
+    """
     noop = lambda *a: None  # noqa: E731
 
     if name == "no_retrieval":
@@ -463,15 +539,16 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
         return (lambda t, pool, step: ce_order[t][0]), noop
 
     if name == "query_memory":
-        idx: Dict[int, int] = defaultdict(int)
+        cur: Dict[int, object] = {}
 
         def choose_qm(t, pool, step):
-            return ce_order[t][idx[t]]
+            order = ce_order[t]
+            return cur[t] if cur.get(t) in order else order[0]
 
         def update_qm(t, doc, signals, step):
             # Keep a document while it works; move to the next one when it fails.
             if naive_reward(signals) <= 0.5:
-                idx[t] = (idx[t] + 1) % len(ce_order[t])
+                cur[t] = _next_in(ce_order[t], doc)
 
         return choose_qm, update_qm
 
@@ -479,12 +556,13 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
         # The same idea, robust to transient failures: search exactly like query_memory, but
         # once a tool has worked for this request keep it through an isolated failure, moving
         # on only after two failures in a row (three if none of them was verified).
-        idx_r: Dict[int, int] = defaultdict(int)
+        cur_r: Dict[int, object] = {}
         fails: Dict[int, int] = defaultdict(int)
         locked: Dict[int, bool] = defaultdict(bool)
 
         def choose_qmr(t, pool, step):
-            return ce_order[t][idx_r[t]]
+            order = ce_order[t]
+            return cur_r[t] if cur_r.get(t) in order else order[0]
 
         def update_qmr(t, doc, signals, step):
             if naive_reward(signals) > 0.5:
@@ -497,7 +575,7 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
             else:
                 move = True
             if move:
-                idx_r[t] = (idx_r[t] + 1) % len(ce_order[t])
+                cur_r[t] = _next_in(ce_order[t], doc)
                 fails[t], locked[t] = 0, False
 
         return choose_qmr, update_qmr
@@ -520,6 +598,166 @@ def make_policy(name: str, seed: int, ce_order: Dict[int, List[int]]) -> Policy:
             q[doc] += alpha * (naive_reward(signals) - q[doc])
 
         return choose_mq, update_mq
+
+    if name == "memrl_official":
+        # MemRL's own selection and update, ported from MemTensor/MemRL (commit c1b322c):
+        # MemoryService.retrieve_query, Phase B (score = w_sim * z(sim) + w_q * z(Q), z(sim)
+        # from corpus mean/std, z(Q) over the candidates clipped to +-3, Q below q_min_threshold
+        # dropped, epsilon-greedy) and QValueUpdater.update via update_values
+        # (Q <- (1 - alpha) Q + alpha r, r = +1 on success, -1 on failure, Q starts at 0).
+        # Settings from configs/rl_bcb_config.yaml. The candidate tools play the role of
+        # memories: the pool is Phase A (the retriever's top-k, no extra threshold) and the
+        # chosen tool is the one injected memory. If no candidate survives, it acts without
+        # memory, i.e. by relevance alone.
+        alpha_m, eps_m, q_min, w_sim, w_q = 0.3, 0.1, -0.8, 0.5, 0.5
+        q_m: Dict[object, float] = defaultdict(float)
+        rng_m = random.Random(seed * 104729 + 7)
+        sem_m = {t: dict(v) for t, v in SEMANTIC.items()}
+        if sem_m:
+            sims = [s for v in sem_m.values() for s in v.values()]
+        else:
+            sims = [s for p in (pools or {}).values() for _, s in p]
+        sim_mean = statistics.fmean(sims) if sims else 0.0
+        sim_std = statistics.pstdev(sims) if len(sims) > 1 else 1.0
+        sim_std = sim_std if sim_std > 1e-9 else 1.0
+
+        def choose_mo(t, pool, step):
+            cos = sem_m.get(t, {})
+            pool = [(d, cos.get(d, s)) for d, s in pool]
+            cands = [(d, s, q_m[d]) for d, s in pool if q_m[d] >= q_min]
+            if not cands:
+                return max(pool, key=lambda p: p[1])[0]
+            qs = [c[2] for c in cands]
+            mean_q = statistics.fmean(qs)
+            std_q = statistics.pstdev(qs) if len(qs) > 1 else 1.0
+            std_q = std_q if std_q > 1e-9 else 1.0
+
+            def score(c):
+                z_q = max(min((c[2] - mean_q) / std_q, 3.0), -3.0)
+                return w_sim * (c[1] - sim_mean) / sim_std + w_q * z_q
+
+            ranked = sorted(cands, key=score, reverse=True)
+            if rng_m.random() < eps_m:
+                return rng_m.choice(ranked)[0]
+            return ranked[0][0]
+
+        def update_mo(t, doc, signals, step):
+            r = 1.0 if naive_reward(signals) > 0.5 else -1.0
+            q_m[doc] = (1.0 - alpha_m) * q_m[doc] + alpha_m * r
+
+        return choose_mo, update_mo
+
+    if name in ("rated", "rated_verified"):
+        # RATED (arXiv 2610.13889), following its code (Elliotes/EcoAgent: DiscountedLinUCB in
+        # scripts/training/train_bandit_warmup.py, scoring and reward in
+        # scripts/evaluation/evaluate_rated_full.py): a discounted LinUCB per tool (A = I,
+        # b = static * x0, A <- gamma A + x x^T, b <- gamma b + reward x, only the chosen tool),
+        # fused as 0.75 * semantic + 0.15 * bandit + 0.10 * static, reward = 0.1 * semantic *
+        # static + 0.9 * execution signal. Static reliability is the code's default 0.75 (the
+        # gates have no tool metadata) and the context is context_vector() in place of the
+        # query embedding. RATED assumes truthful execution feedback: "rated" uses the
+        # unverified feedback as the execution signal, "rated_verified" learns only from
+        # verified calls.
+        import numpy as np
+
+        gamma_r, alpha_r, w_sem, w_dyn, w_stat, static = 0.95, 0.1, 0.75, 0.15, 0.10, 0.75
+        verified_only = name == "rated_verified"
+        x0 = np.zeros(CTX_DIM)
+        x0[0] = 1.0
+        arms: Dict[object, list] = {}
+        sem_seen: Dict[int, Dict[object, float]] = {}
+        sem_r = {t: dict(v) for t, v in SEMANTIC.items()}
+
+        def arm(d):
+            if d not in arms:
+                arms[d] = [np.eye(CTX_DIM), static * x0]  # [inverse of A, b]
+            return arms[d]
+
+        def choose_ra(t, pool, step):
+            x = context_vector(t)
+            cos = sem_r.get(t, {})
+            pool = [(d, cos.get(d, s)) for d, s in pool]
+            sem_seen[t] = dict(pool)
+            best, best_score = pool[0][0], -math.inf
+            for d, s in pool:
+                a_inv, b = arm(d)
+                ucb = float(x @ (a_inv @ b)) + alpha_r * math.sqrt(max(float(x @ a_inv @ x), 0.0))
+                h = w_sem * s + w_dyn * ucb + w_stat * static
+                if h > best_score:
+                    best, best_score = d, h
+            return best
+
+        def update_ra(t, doc, signals, step):
+            if verified_only:
+                if signals.s_gt is None:
+                    return
+                executed_ok = signals.s_gt > 0.5
+            else:
+                executed_ok = naive_reward(signals) > 0.5
+            reward = 0.1 * sem_seen.get(t, {}).get(doc, 0.0) * static + 0.9 * float(executed_ok)
+            x = context_vector(t)
+            entry = arm(doc)
+            # A <- gamma A + x x^T, kept as its inverse (Sherman-Morrison).
+            a_inv = entry[0] / gamma_r
+            ax = a_inv @ x
+            entry[0] = a_inv - np.outer(ax, ax) / (1.0 + float(x @ ax))
+            entry[1] = gamma_r * entry[1] + reward * x
+
+        return choose_ra, update_ra
+
+    if name == "cesa":
+        # ESA's CESA-LinUCB (arXiv 2603.13356, Algorithm 1) over the candidate tools: LinUCB per
+        # tool on a trust-weighted reward estimate. Each unverified source m has a trust
+        # w_m = sigmoid(theta_m . phi), updated only on audited (verified) calls by one SGD step
+        # on the cross-entropy towards "m agreed with the audit"; every call adds
+        # (sum_m w_m) x x^T to A and (sum_m w_m y_m) x to b, and the audit itself enters only the
+        # trust update. The paper does not give beta, lambda, the learning rate or phi: we use
+        # beta 0.1, lambda 1, learning rate 0.5 and phi = (context, tool vector) / sqrt(2), so
+        # that trust can depend on the tool. Ties are broken by the retrieval score.
+        import numpy as np
+
+        beta_c, lr_c = 0.1, 0.5
+        theta: Dict[str, object] = {
+            src: np.zeros(CTX_DIM + TOOL_DIM) for src in ("s_behave", "s_judge", "s_expl")
+        }
+        arms_c: Dict[object, list] = {}
+
+        def arm_c(d):
+            if d not in arms_c:
+                arms_c[d] = [np.eye(CTX_DIM), np.zeros(CTX_DIM)]  # [inverse of A, b]
+            return arms_c[d]
+
+        def choose_c(t, pool, step):
+            x = context_vector(t)
+
+            def score(p):
+                a_inv, b = arm_c(p[0])
+                mu = float(x @ (a_inv @ b))
+                return (mu + beta_c * math.sqrt(max(float(x @ a_inv @ x), 0.0)), p[1])
+
+            return max(pool, key=score)[0]
+
+        def update_c(t, doc, signals, step):
+            votes = [
+                (m, float(getattr(signals, m))) for m in theta if getattr(signals, m) is not None
+            ]
+            if not votes:
+                return
+            x = context_vector(t)
+            phi = np.concatenate((x, _unit("tool", doc, TOOL_DIM))) / math.sqrt(2.0)
+            w = {m: 1.0 / (1.0 + math.exp(-float(theta[m] @ phi))) for m, _ in votes}
+            c = sum(w[m] for m, _ in votes)
+            entry = arm_c(doc)
+            ax = entry[0] @ x
+            entry[0] = entry[0] - c * np.outer(ax, ax) / (1.0 + c * float(x @ ax))
+            entry[1] = entry[1] + sum(w[m] * y for m, y in votes) * x
+            if signals.s_gt is not None:
+                audit = signals.s_gt > 0.5
+                for m, y in votes:
+                    agreed = 1.0 if (y > 0.5) == audit else 0.0
+                    theta[m] = theta[m] - lr_c * (w[m] - agreed) * phi
+
+        return choose_c, update_c
 
     if (
         name in ("rrl", "rrl_nodecay", "rrl_ce", "rrl_combined", "rrl_combined_ctx")
@@ -763,7 +1001,7 @@ def run_policies(
                 max(outcome(t, d, step) for d, _ in pools[t]) for step, t in enumerate(stream)
             ]
             continue
-        choose, update = make_policy(name, seed, ce_order)
+        choose, update = make_policy(name, seed, ce_order, pools)
         h = []
         for step, t in enumerate(stream):
             doc = choose(t, pools[t], step)
@@ -833,6 +1071,33 @@ def load_or_build_pools(seeds: List[int], leaky: bool, embedder, cross_encoder) 
         with open(path, "w") as f:
             json.dump(frozen, f)
     return datasets
+
+
+def load_or_build_cosines(seeds: List[int], leaky: bool, datasets: dict) -> dict:
+    """Raw MiniLM cosine of each query to each pool document, per seed, for the RATED and MemRL
+    ports; frozen next to the pools."""
+    path = os.path.join(DATA_DIR, f"gate_f_cosine_{'leaky' if leaky else 'leakfree'}.json")
+    frozen: dict = {}
+    if os.path.exists(path):
+        with open(path) as f:
+            frozen = json.load(f)
+    embedder = None
+    changed = False
+    for s in seeds:
+        if str(s) not in frozen:
+            if embedder is None:
+                embedder, _ = load_models(offline_mock=False)
+            q, corpus = build_dataset(s, leaky=leaky)
+            scores = cosine_map(q, corpus, datasets[s][0], embedder)
+            frozen[str(s)] = {str(t): {str(d): c for d, c in v.items()} for t, v in scores.items()}
+            changed = True
+    if changed:
+        with open(path, "w") as f:
+            json.dump(frozen, f)
+    return {
+        s: {int(t): {int(d): c for d, c in v.items()} for t, v in frozen[str(s)].items()}
+        for s in seeds
+    }
 
 
 class _MockEmbedder:
@@ -915,6 +1180,13 @@ def summarize(per_seed: Dict[str, Dict[str, List[float]]], seeds: List[int]) -> 
                 data["rrl_ce"], data["rrl_combined_nocd"]
             )
         fixed = "rrl_combined_ctx_verified_fixed"
+        for b in EXTERNAL_BASELINES:
+            if b in data:
+                comparisons[metric][f"rrl_combined_ctx_verified_vs_{b}"] = paired(
+                    data[b], data["rrl_combined_ctx_verified"]
+                )
+                if fixed in data:
+                    comparisons[metric][f"{fixed}_vs_{b}"] = paired(data[b], data[fixed])
         if fixed in data:
             comparisons[metric][f"rrl_combined_ctx_verified_vs_{fixed}"] = paired(
                 data[fixed], data["rrl_combined_ctx_verified"]
@@ -1102,13 +1374,14 @@ def main() -> None:
         sys.exit(f"{len(missing)} outcome cells missing from {table.path}; run with --build.")
 
     variant = "leaky" if args.leaky else "leakfree"
+    cosines = load_or_build_cosines(seeds, args.leaky, datasets)
     names = sorted(SCENARIOS) if args.scenario == "all" else [args.scenario]
     os.makedirs(RESULTS_DIR, exist_ok=True)
     for sc_name in names:
-        per_seed = {
-            s: run_seed(s, args.epochs, table, *datasets[s], scenario=SCENARIOS[sc_name])
-            for s in seeds
-        }
+        per_seed = {}
+        for s in seeds:
+            set_semantic(cosines[s])
+            per_seed[s] = run_seed(s, args.epochs, table, *datasets[s], scenario=SCENARIOS[sc_name])
         summary = summarize(per_seed, seeds)
         title = (
             f"GATE F — MBPP {variant}, scenario={sc_name}, generator={tag}, "

@@ -66,6 +66,7 @@ from run_gate_matrix import (
     plot,
     print_report,
     run_policies,
+    set_semantic,
     summarize,
 )
 
@@ -508,6 +509,22 @@ def load_or_build_pools(offline_mock: bool = False):
     return pools, ce
 
 
+def cosines(pools) -> Dict[int, Dict[int, float]]:
+    """Raw MiniLM cosine of each question to each pool document (for the RATED and MemRL ports),
+    computed once and frozen next to the pools."""
+    from run_gate_matrix import cosine_map
+
+    path = os.path.join(G_DIR, f"cosine{CFG['suffix']}.json")
+    if not os.path.exists(path):
+        embedder, _ = load_models(offline_mock=False)
+        scores = cosine_map(tasks(), documents(), pools, embedder)
+        with open(path, "w") as f:
+            json.dump({str(t): {str(d): c for d, c in v.items()} for t, v in scores.items()}, f)
+    with open(path) as f:
+        raw = json.load(f)
+    return {int(t): {int(d): c for d, c in v.items()} for t, v in raw.items()}
+
+
 def needed_cells(pools) -> List[Tuple[int, str, int]]:
     cells = []
     for t, pool in pools.items():
@@ -665,6 +682,7 @@ def main() -> None:
 
     write_library()
     pools, ce_order = load_or_build_pools()
+    set_semantic(cosines(pools))
     comp = pool_composition(pools)
     print("pool composition (mean per query):", json.dumps(comp))
 
