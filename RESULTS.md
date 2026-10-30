@@ -92,7 +92,8 @@ check), so unverified success counts for less than unverified failure.
    fixed-threshold rule (W, M), but still costs 2–3 points when nothing changes (W, M), reacts
    later to a real API change than that rule (G), and does little against staged defection.
 8. **When the model already knows the answer, retrieval does not matter** (Gate F: reranker
-   57.1% = no retrieval 57.2%).
+   57.1% = no retrieval 57.2%). With a much weaker generator (Qwen2.5-0.5B, 6 seeds) the
+   reranker's pick hurts (26.7% vs 32.8%) and reusing what worked does best (41.0%).
 9. **A tool that turns liar after earning trust erases RRL's advantage.** When the most useful
    honest extractor starts returning wrong results that still report success (Gate M, spot
    checks), RRL loses 15 points and falls just behind plain per-site memory (36.8% vs 39.1%);
@@ -539,6 +540,32 @@ Retrieval barely matters here: the reranker matches no retrieval, the most and l
 candidates pass at the same rate (56.9% vs 56.2% over 4,500 pairs), and the best possible pick is
 4 points above the reranker. A benchmark where the model already knows the answer cannot show
 the value of learning which documents help, which is why Gates G, T, W and M were built.
+
+### A weaker generator: Qwen2.5-0.5B-Instruct (6 seeds)
+
+`data/matrix_outcomes_hf-Qwen2.5-0.5B-Instruct.jsonl` (1,012 cells, generated locally with
+`--generator hf`). It covers seeds 42–47 only, so it is a check on the 30-seed Gemini table, not
+a replacement. Replay it with
+`python3 sim/run_gate_matrix.py --generator hf --seeds 6 --scenario all --ablation`; the
+generator is only loaded with `--build`.
+
+| Policy | stationary | sparse_verifier | sycophantic | drift |
+|---|---|---|---|---|
+| no retrieval | 32.8 | 32.8 | 32.8 | 32.8 |
+| static reranker | 26.7 | 26.7 | 26.7 | 25.0 |
+| reuse what worked | 41.0 | 41.0 | 38.8 | 33.9 |
+| MemRL-style | 28.7 | 29.2 | 28.4 | 28.5 |
+| RRL combined | 33.6 | 31.0 | 30.0 | 30.3 |
+| RRL + per-context | 35.3 | 33.1 | 30.2 | 28.4 |
+| RRL + per-context + verified memory | 37.0 | 32.2 | 32.6 | 29.8 |
+| best possible | 44.4 | 44.4 | 44.4 | 44.4 |
+
+With a model that fails two thirds of the time on its own, the choice of example matters more:
+the best possible pick is 17.7 points above the reranker (4 with Gemini), and the reranker's pick
+hurts (26.7% vs 32.8% without retrieval; better in 2 of 6 seeds, p = 0.22). Reusing what worked
+is the best learner in every scenario: 14.4 points above the reranker when stationary (6 of 6
+seeds) and 4.0–8.8 points above RRL + per-context + verified memory (ahead in 5 of 6 seeds when
+stationary, 6 of 6 otherwise).
 
 ## Limits
 

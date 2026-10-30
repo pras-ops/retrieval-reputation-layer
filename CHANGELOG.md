@@ -17,6 +17,8 @@ All notable changes to this project are documented here. The format is based on
   poisoned tools and labels, with its recorded Gemini responses as the LLM baseline.
 - **Gate V** (`sim/run_gate_v.py`): tool selection on MCPEvol-Bench's evolving toolsets.
   Neither benchmark is redistributed; only ids, tool names, scores and label codes are committed.
+- **Gate F with a weaker generator**: recorded Qwen2.5-0.5B-Instruct outcomes for seeds 42–47
+  (`data/matrix_outcomes_hf-Qwen2.5-0.5B-Instruct.jsonl`) and their replays in `sim/results/`.
 
 ### Fixed
 - **Source reliability gave an always-yes source a positive vote** when verified outcomes were
